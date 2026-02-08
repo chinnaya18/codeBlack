@@ -1,0 +1,14 @@
+/* Global cyber theme */
+body {
+  margin: 0;
+  background-color: #0a0a0a;
+  color: #00ff99;
+  font-family: "JetBrains Mono", monospace;
+}
+
+/* Basic utility */
+.center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
