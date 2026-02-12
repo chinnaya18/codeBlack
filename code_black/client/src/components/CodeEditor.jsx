@@ -1,54 +1,62 @@
 import Editor from "@monaco-editor/react";
 
-export default function CodeEditor({ round, locked, onCodeChange }) {
+export default function CodeEditor({
+  language,
+  locked,
+  onCodeChange,
+  code,
+  round,
+}) {
   const isRound1 = round === 1;
   const isRound2 = round === 2;
 
   return (
     <div
       style={{
-        height: "calc(100vh - 50px)",
-        backgroundColor: "#000",
-        filter: isRound1 ? "blur(1.5px)" : "none",
-        userSelect: isRound2 ? "none" : "auto",
+        height: "100%",
+        position: "relative",
+        filter: isRound1 ? "blur(1.2px)" : "none",
       }}
     >
       <Editor
         height="100%"
-        language="javascript"
-        theme={isRound2 ? "vs-dark" : "vs-dark"}
-        value={""}
-        onChange={(value) => onCodeChange(value)}
+        language={language === "python" ? "python" : "javascript"}
+        theme="vs-dark"
+        value={code}
+        onChange={(value) => onCodeChange(value || "")}
         options={{
           readOnly: locked,
-
-          /* 🔴 BLACKOUT MODE */
           fontSize: 14,
-          fontFamily: "JetBrains Mono",
-          lineNumbers: "off",
+          fontFamily: "'JetBrains Mono', monospace",
+          lineNumbers: isRound2 ? "off" : "on",
           cursorStyle: isRound2 ? "block" : "line",
-          renderLineHighlight: "none",
-          selectionHighlight: false,
-          occurrencesHighlight: false,
+          renderLineHighlight: isRound2 ? "none" : "all",
+          selectionHighlight: !isRound2,
+          occurrencesHighlight: !isRound2,
           contextmenu: !isRound2,
-
           minimap: { enabled: false },
           glyphMargin: false,
-          folding: false,
-
-          /* 🔴 VISUAL BLACKOUT */
-          cursorBlinking: "solid",
+          folding: true,
+          cursorBlinking: isRound2 ? "solid" : "blink",
+          scrollBeyondLastLine: false,
+          automaticLayout: true,
+          padding: { top: 16 },
+          suggest: { showWords: !isRound2 },
         }}
       />
 
-      {/* Overlay to hide everything visually */}
+      {/* Blackout overlay for Round 2 - hides typed text */}
       {isRound2 && (
         <div
           style={{
             position: "absolute",
-            inset: 0,
-            backgroundColor: "black",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.95)",
             pointerEvents: "none",
+            zIndex: 10,
           }}
         />
       )}

@@ -1,14 +1,21 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { loginUser } from "../services/auth";
+import { loginUser, isLoggedIn, getUser } from "../services/auth";
 
 export default function Login() {
   const navigate = useNavigate();
-
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Auto-redirect if already logged in
+  useEffect(() => {
+    if (isLoggedIn()) {
+      const user = getUser();
+      navigate(user.role === "admin" ? "/admin" : "/waiting");
+    }
+  }, [navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -17,12 +24,11 @@ export default function Login() {
 
     try {
       const data = await loginUser(username, password);
-
-      // Store JWT securely (basic version)
-      localStorage.setItem("token", data.token);
-
-      // Redirect to Coding Arena
-      navigate("/rounds");
+      if (data.role === "admin") {
+        navigate("/admin");
+      } else {
+        navigate("/waiting");
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -32,82 +38,154 @@ export default function Login() {
 
   return (
     <div style={styles.container}>
-      <h1 style={styles.title}>CODEBLACK</h1>
-      <p style={styles.subtitle}>Secure Login</p>
+      <div style={styles.particles} />
 
-      <form onSubmit={handleSubmit} style={styles.form}>
-        <input
-          type="text"
-          placeholder="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
-          style={styles.input}
-        />
+      <div style={styles.glowBox}>
+        <h1 style={styles.title}>CODEBLACK</h1>
+        <p style={styles.subtitle}>COMPETITIVE CODING ARENA</p>
+        <div style={styles.line} />
 
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          style={styles.input}
-        />
+        <form onSubmit={handleSubmit} style={styles.form}>
+          <div style={styles.inputGroup}>
+            <label style={styles.label}>USERNAME</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              style={styles.input}
+              autoComplete="off"
+              placeholder="Enter username"
+            />
+          </div>
 
-        {error && <div style={styles.error}>{error}</div>}
+          <div style={styles.inputGroup}>
+            <label style={styles.label}>PASSWORD</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              style={styles.input}
+              placeholder="Enter password"
+            />
+          </div>
 
-        <button type="submit" style={styles.button} disabled={loading}>
-          {loading ? "Authenticating..." : "LOGIN"}
-        </button>
-      </form>
+          {error && <div style={styles.error}>{error}</div>}
+
+          <button type="submit" style={styles.button} disabled={loading}>
+            {loading ? "AUTHENTICATING..." : "ENTER ARENA"}
+          </button>
+        </form>
+
+        <p style={styles.hint}>
+          Competitors: user1-user5 / pass123 &nbsp;|&nbsp; Admin: admin /
+          admin123
+        </p>
+      </div>
     </div>
   );
 }
-
-/* ───────────── STYLES ───────────── */
 
 const styles = {
   container: {
     height: "100vh",
     backgroundColor: "#050505",
     display: "flex",
-    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    color: "#00ff99",
-    fontFamily: "monospace",
+    fontFamily: "'JetBrains Mono', monospace",
+    overflow: "hidden",
+    position: "relative",
+  },
+  particles: {
+    position: "absolute",
+    inset: 0,
+    background:
+      "radial-gradient(circle at 20% 80%, #00ff9908 0%, transparent 50%), radial-gradient(circle at 80% 20%, #00ff9905 0%, transparent 50%)",
+    pointerEvents: "none",
+  },
+  glowBox: {
+    border: "1px solid #00ff9925",
+    padding: "48px",
+    background: "linear-gradient(135deg, #0a0a0a 0%, #0d0d0d 100%)",
+    boxShadow: "0 0 60px #00ff9908, inset 0 0 60px #00ff9903",
+    position: "relative",
+    zIndex: 1,
+    minWidth: "380px",
+    animation: "fadeIn 0.8s ease",
   },
   title: {
-    fontSize: "3rem",
-    letterSpacing: "0.3rem",
+    fontSize: "2.8rem",
+    color: "#00ff99",
+    letterSpacing: "8px",
+    margin: 0,
+    textShadow: "0 0 30px #00ff9930",
+    textAlign: "center",
   },
   subtitle: {
-    marginBottom: "2rem",
-    opacity: 0.7,
+    color: "#444",
+    fontSize: "10px",
+    letterSpacing: "6px",
+    textAlign: "center",
+    marginTop: "8px",
+  },
+  line: {
+    height: "1px",
+    background: "linear-gradient(90deg, transparent, #00ff9930, transparent)",
+    margin: "28px 0",
   },
   form: {
     display: "flex",
     flexDirection: "column",
-    width: "300px",
-    gap: "1rem",
+    gap: "20px",
+  },
+  inputGroup: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+  },
+  label: {
+    color: "#555",
+    fontSize: "9px",
+    letterSpacing: "3px",
   },
   input: {
-    backgroundColor: "black",
-    border: "1px solid #00ff99",
-    padding: "0.75rem",
+    backgroundColor: "#080808",
+    border: "1px solid #1a3a2a",
+    padding: "14px 16px",
     color: "#00ff99",
-    fontSize: "1rem",
+    fontSize: "14px",
+    fontFamily: "'JetBrains Mono', monospace",
+    outline: "none",
+    transition: "all 0.3s",
   },
   button: {
     backgroundColor: "#00ff99",
-    color: "black",
+    color: "#000",
     border: "none",
-    padding: "0.75rem",
+    padding: "14px",
     fontWeight: "bold",
     cursor: "pointer",
+    fontSize: "14px",
+    fontFamily: "'JetBrains Mono', monospace",
+    letterSpacing: "3px",
+    marginTop: "8px",
+    transition: "all 0.3s",
   },
   error: {
-    color: "red",
-    fontSize: "0.9rem",
+    color: "#ff4444",
+    fontSize: "12px",
+    textAlign: "center",
+    padding: "10px",
+    border: "1px solid #ff444425",
+    background: "#ff444408",
+  },
+  hint: {
+    color: "#333",
+    fontSize: "9px",
+    textAlign: "center",
+    marginTop: "24px",
+    letterSpacing: "0.5px",
   },
 };
