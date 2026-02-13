@@ -37,15 +37,12 @@ export default function Leaderboard() {
       return { color: "#ffd700", textShadow: "0 0 12px #ffd70050" };
     if (rank === 2)
       return { color: "#c0c0c0", textShadow: "0 0 12px #c0c0c050" };
-    if (rank === 3)
-      return { color: "#cd7f32", textShadow: "0 0 12px #cd7f3250" };
     return { color: "#555" };
   };
 
   const getRankIcon = (rank) => {
-    if (rank === 1) return "👑";
+    if (rank === 1) return "🏆";
     if (rank === 2) return "🥈";
-    if (rank === 3) return "🥉";
     return `#${rank}`;
   };
 

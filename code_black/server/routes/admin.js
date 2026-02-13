@@ -53,13 +53,29 @@ router.post("/start-round", authMiddleware, adminOnly, (req, res) => {
 
   // Clear any existing timer
   if (gs.roundTimer) clearTimeout(gs.roundTimer);
+  if (gs.roundCheckInterval) clearInterval(gs.roundCheckInterval);
 
-  // Auto-end round when time expires
+  // Auto-end round when time expires (primary timer)
   gs.roundTimer = setTimeout(() => {
-    gs.roundStatus = "ended";
-    req.io.emit("round:end", { round: roundNum });
-    req.io.emit("leaderboard:update", req.app.get("getLeaderboard")());
+    if (gs.roundStatus === "active") {
+      gs.roundStatus = "ended";
+      req.io.emit("round:end", { round: roundNum });
+      req.io.emit("leaderboard:update", req.app.get("getLeaderboard")());
+      console.log(`Round ${roundNum} auto-ended by timer.`);
+    }
   }, duration);
+
+  // Secondary check every 5 seconds to enforce time strictly
+  gs.roundCheckInterval = setInterval(() => {
+    if (gs.roundEndTime && Date.now() >= gs.roundEndTime && gs.roundStatus === "active") {
+      gs.roundStatus = "ended";
+      clearInterval(gs.roundCheckInterval);
+      gs.roundCheckInterval = null;
+      req.io.emit("round:end", { round: roundNum });
+      req.io.emit("leaderboard:update", req.app.get("getLeaderboard")());
+      console.log(`Round ${roundNum} force-ended by interval check.`);
+    }
+  }, 5000);
 
   const assignProblem = req.app.get("assignProblem");
   const getUserProblem = req.app.get("getUserProblem");
@@ -94,6 +110,8 @@ router.post("/end-round", authMiddleware, adminOnly, (req, res) => {
   }
 
   if (gs.roundTimer) clearTimeout(gs.roundTimer);
+  if (gs.roundCheckInterval) clearInterval(gs.roundCheckInterval);
+  gs.roundCheckInterval = null;
   gs.roundStatus = "ended";
 
   req.io.emit("round:end", { round: gs.currentRound });
@@ -137,6 +155,8 @@ router.post("/reset", authMiddleware, adminOnly, (req, res) => {
   const gs = req.gameState;
 
   if (gs.roundTimer) clearTimeout(gs.roundTimer);
+  if (gs.roundCheckInterval) clearInterval(gs.roundCheckInterval);
+  gs.roundCheckInterval = null;
 
   gs.currentRound = 0;
   gs.roundStatus = "waiting";

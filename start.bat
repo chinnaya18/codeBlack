@@ -46,6 +46,15 @@ if %ERRORLEVEL% NEQ 0 (
     for /f "tokens=*" %%i in ('py --version') do echo     Python:  %%i
 )
 
+:: ─── Add MSYS2 GCC to PATH (for C compilation) ───────────
+if exist "C:\msys64\mingw64\bin\gcc.exe" (
+    set "PATH=C:\msys64\mingw64\bin;%PATH%"
+    echo     GCC:     Found ^(MSYS2 MinGW-w64^)
+) else (
+    echo [!] GCC not found - C language support disabled
+    echo     Install MSYS2 and run: pacman -S mingw-w64-x86_64-gcc
+)
+
 echo.
 
 :: ─── Kill Existing Processes ──────────────────────────────

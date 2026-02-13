@@ -9,6 +9,7 @@ import WaitingRoom from "./views/WaitingRoom";
 import CodingArena from "./views/CodingArena";
 import Leaderboard from "./views/Leaderboard";
 import AdminPanel from "./views/AdminPanel";
+import AdminLeaderboard from "./views/AdminLeaderboard";
 import { isLoggedIn, getUser } from "./services/auth";
 import "./styles/cyber.css";
 import "./styles/glitch.css";
@@ -54,6 +55,14 @@ function App() {
           element={
             <ProtectedRoute adminOnly>
               <AdminPanel />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/leaderboard"
+          element={
+            <ProtectedRoute adminOnly>
+              <AdminLeaderboard />
             </ProtectedRoute>
           }
         />

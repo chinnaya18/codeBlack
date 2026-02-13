@@ -1,99 +1,165 @@
 /**
- * Scoring System (Fixed):
- * - Syntax error:        0 points
- * - Runtime error:       0 points
- * - Time limit exceeded: 0 points
- * - Partial correct:     (passed / total) * basePoints  (proportional)
- * - All correct:         basePoints + time bonus
- *
- * Time Bonus:
- * - Up to 20% bonus for early submission
- * - timeBonus = floor(timeRemainingFraction * 0.2 * basePoints)
+ * AI-Powered Scoring System:
+ * 
+ * Base Points: from problem definition (e.g., 100)
+ * 
+ * Language Deductions (from base points):
+ * - C:           0 (no deduction - hardest language)
+ * - Java:       -3 points
+ * - Python:     -5 points
+ * - JavaScript: -5 points
+ * 
+ * Error Deductions (from adjusted points, per error instance):
+ * - Syntax Error:  -7 points per error
+ * - Logical Error: -10 points per failed test case
+ * - Runtime Error: -8 points per error
+ * 
+ * Time Limit Exceeded: 10% of adjusted points only
+ * 
+ * Time Bonus: up to +20% for early submission (only if all tests pass)
  */
-function calculateScore(basePoints, results, timeInfo = null) {
+
+const LANGUAGE_DEDUCTIONS = {
+  c: 0,
+  java: 3,
+  python: 5,
+  javascript: 5,
+};
+
+const ERROR_PENALTIES = {
+  syntax: 7,    // -7 per syntax error
+  logical: 10,  // -10 per failed test case (logical error)
+  runtime: 8,   // -8 per runtime error
+};
+
+function calculateScore(basePoints, aiResult, timeInfo = null, language = "python") {
   let score = 0;
   let errorType = "none";
-  const failedCases = [];
   const feedback = [];
 
-  if (results.syntaxError) {
-    score = 0;
-    errorType = "Syntax Error";
-    feedback.push(
-      "Your code has syntax errors. Check for missing brackets, colons, or typos.",
-    );
-  } else if (results.runtimeError) {
-    score = 0;
-    errorType = "Runtime Error";
-    feedback.push(
-      "Your code crashed during execution. Check for division by zero, index errors, etc.",
-    );
-  } else if (results.timedOut) {
-    score = 0;
-    errorType = "Time Limit Exceeded";
-    feedback.push(
-      "Your code took too long. Optimize your algorithm for better time complexity.",
-    );
+  // ── Step 1: Language deduction ──
+  const langDeduction = LANGUAGE_DEDUCTIONS[language] || 0;
+  const adjustedPoints = Math.max(0, basePoints - langDeduction);
+
+  if (langDeduction > 0) {
+    feedback.push(`Language penalty: -${langDeduction} pts (${language}). Max possible: ${adjustedPoints}/${basePoints}`);
   } else {
-    const { testResults } = results;
-    let passedCount = 0;
-
-    testResults.forEach((tr, idx) => {
-      if (tr.passed) {
-        passedCount++;
-      } else {
-        failedCases.push({
-          testCase: idx + 1,
-          expected: tr.expected,
-          got: tr.actual,
-        });
-      }
-    });
-
-    const totalCount = testResults.length;
-
-    if (failedCases.length > 0) {
-      // Proportional scoring: partial credit based on test cases passed
-      score = Math.round((passedCount / totalCount) * basePoints);
-      errorType = "Wrong Answer";
-      feedback.push(`${passedCount}/${totalCount} test cases passed.`);
-      feedback.push(
-        `Partial score: ${score}/${basePoints} points.`,
-      );
-    } else {
-      // All test cases passed - full points + time bonus
-      score = basePoints;
-      errorType = "Accepted";
-
-      // Calculate time bonus
-      let timeBonus = 0;
-      if (timeInfo && timeInfo.roundEndTime && timeInfo.roundStartTime) {
-        const totalDuration = timeInfo.roundEndTime - timeInfo.roundStartTime;
-        const timeRemaining = Math.max(0, timeInfo.roundEndTime - Date.now());
-        const timeRemainingFraction = timeRemaining / totalDuration;
-        timeBonus = Math.floor(timeRemainingFraction * 0.2 * basePoints);
-        score += timeBonus;
-      }
-
-      if (timeBonus > 0) {
-        feedback.push(
-          `All test cases passed! Full score + ${timeBonus} time bonus!`,
-        );
-      } else {
-        feedback.push("All test cases passed! Great job!");
-      }
-    }
+    feedback.push(`No language penalty for C. Max possible: ${adjustedPoints}/${basePoints}`);
   }
 
+  // ── Step 2: Handle error types from AI evaluation ──
+  const syntaxErrors = aiResult.syntax_error_count || 0;
+  const runtimeErrors = aiResult.runtime_error_count || 0;
+  const logicalErrors = aiResult.logical_error_count || 0;
+  const testResults = aiResult.test_results || [];
+  const totalTests = testResults.length;
+  const passedTests = testResults.filter(t => t.passed).length;
+
+  // Compilation / Syntax errors
+  if (aiResult.compilation_error || aiResult.syntax_error) {
+    const syntaxPenalty = syntaxErrors * ERROR_PENALTIES.syntax;
+    score = Math.max(0, adjustedPoints - syntaxPenalty);
+    errorType = aiResult.compilation_error ? "Compilation Error" : "Syntax Error";
+
+    feedback.push(`${syntaxErrors} syntax error(s) detected → -${syntaxPenalty} pts (${syntaxErrors} × ${ERROR_PENALTIES.syntax})`);
+    feedback.push(`Score: ${score}/${adjustedPoints}`);
+
+    if (aiResult.error_details) {
+      // Show first few lines of the error
+      const errorLines = aiResult.error_details.split("\n").slice(0, 5).join("\n");
+      feedback.push(`Error: ${errorLines}`);
+    }
+
+    return buildResult(score, errorType, feedback, language, langDeduction, totalTests, passedTests, syntaxErrors, runtimeErrors, logicalErrors);
+  }
+
+  // Runtime errors
+  if (aiResult.runtime_error) {
+    const runtimePenalty = runtimeErrors * ERROR_PENALTIES.runtime;
+    score = Math.max(0, adjustedPoints - runtimePenalty);
+    errorType = "Runtime Error";
+
+    feedback.push(`${runtimeErrors} runtime error(s) detected → -${runtimePenalty} pts (${runtimeErrors} × ${ERROR_PENALTIES.runtime})`);
+    feedback.push(`Score: ${score}/${adjustedPoints}`);
+
+    if (aiResult.error_details) {
+      const errorLines = aiResult.error_details.split("\n").slice(0, 5).join("\n");
+      feedback.push(`Error: ${errorLines}`);
+    }
+
+    return buildResult(score, errorType, feedback, language, langDeduction, totalTests, passedTests, syntaxErrors, runtimeErrors, logicalErrors);
+  }
+
+  // Time Limit Exceeded
+  if (aiResult.timed_out) {
+    score = Math.round(adjustedPoints * 0.10);
+    errorType = "Time Limit Exceeded";
+
+    feedback.push(`Time Limit Exceeded! Score: ${score} (10% partial credit).`);
+    feedback.push("Optimize your algorithm — avoid nested loops or use better data structures.");
+
+    return buildResult(score, errorType, feedback, language, langDeduction, totalTests, passedTests, syntaxErrors, runtimeErrors, logicalErrors);
+  }
+
+  // ── Step 3: Logical errors (wrong output on test cases) ──
+  if (logicalErrors > 0) {
+    const logicalPenalty = logicalErrors * ERROR_PENALTIES.logical;
+    score = Math.max(0, adjustedPoints - logicalPenalty);
+    errorType = "Wrong Answer";
+
+    feedback.push(`${passedTests}/${totalTests} test cases passed.`);
+    feedback.push(`${logicalErrors} logical error(s) → -${logicalPenalty} pts (${logicalErrors} × ${ERROR_PENALTIES.logical})`);
+    feedback.push(`Score: ${score}/${adjustedPoints}`);
+
+    // Show first failed test case
+    const firstFailed = testResults.find(t => !t.passed);
+    if (firstFailed) {
+      feedback.push(`First failure: expected "${firstFailed.expected}", got "${firstFailed.actual}"`);
+    }
+
+    return buildResult(score, errorType, feedback, language, langDeduction, totalTests, passedTests, syntaxErrors, runtimeErrors, logicalErrors);
+  }
+
+  // ── Step 4: All test cases passed! ──
+  score = adjustedPoints;
+  errorType = "Accepted";
+
+  // Time bonus
+  let timeBonus = 0;
+  if (timeInfo && timeInfo.roundEndTime && timeInfo.roundStartTime) {
+    const totalDuration = timeInfo.roundEndTime - timeInfo.roundStartTime;
+    const timeRemaining = Math.max(0, timeInfo.roundEndTime - Date.now());
+    const timeRemainingFraction = timeRemaining / totalDuration;
+    timeBonus = Math.floor(timeRemainingFraction * 0.2 * adjustedPoints);
+    score += timeBonus;
+  }
+
+  if (timeBonus > 0) {
+    feedback.push(`All ${totalTests} test cases passed! Full score ${adjustedPoints} + ${timeBonus} time bonus = ${score}!`);
+  } else {
+    feedback.push(`All ${totalTests} test cases passed! Score: ${score} points.`);
+  }
+
+  return buildResult(score, errorType, feedback, language, langDeduction, totalTests, passedTests, syntaxErrors, runtimeErrors, logicalErrors);
+}
+
+function buildResult(score, errorType, feedback, language, langDeduction, totalCases, passedCases, syntaxErrors, runtimeErrors, logicalErrors) {
   return {
     score,
     errorType,
-    failedCases,
     feedback,
-    totalCases: results.testResults ? results.testResults.length : 0,
-    passedCases: results.testResults
-      ? results.testResults.filter((t) => t.passed).length
-      : 0,
+    language,
+    languageDeduction: langDeduction,
+    totalCases,
+    passedCases,
+    errorBreakdown: {
+      syntaxErrors,
+      runtimeErrors,
+      logicalErrors,
+      syntaxPenaltyPerError: ERROR_PENALTIES.syntax,
+      runtimePenaltyPerError: ERROR_PENALTIES.runtime,
+      logicalPenaltyPerError: ERROR_PENALTIES.logical,
+    },
   };
 }
 

@@ -185,8 +185,10 @@ export default function CodingArena() {
                 style={styles.langSelect}
                 disabled={editorLocked}
               >
-                <option value="python">Python</option>
-                <option value="javascript">JavaScript</option>
+                <option value="python">Python (-5 pts)</option>
+                <option value="javascript">JavaScript (-5 pts)</option>
+                <option value="java">Java (-3 pts)</option>
+                <option value="c">C (no penalty)</option>
               </select>
               <span style={styles.modeLabel}>
                 {ROUND === 1 ? "BLUR MODE" : "BLACKOUT MODE"}
@@ -278,6 +280,41 @@ export default function CodingArena() {
                     {f}
                   </p>
                 ))}
+
+              {/* Error Breakdown */}
+              {result.errorBreakdown && (
+                result.errorBreakdown.syntaxErrors > 0 ||
+                result.errorBreakdown.runtimeErrors > 0 ||
+                result.errorBreakdown.logicalErrors > 0
+              ) && (
+                <div style={{
+                  marginTop: "8px",
+                  padding: "8px 12px",
+                  background: "#1a0a0a",
+                  border: "1px solid #ff444430",
+                  borderRadius: "6px",
+                  fontSize: "11px",
+                }}>
+                  <div style={{ color: "#ff6666", fontWeight: "bold", marginBottom: "4px", letterSpacing: "1px" }}>
+                    ERROR BREAKDOWN
+                  </div>
+                  {result.errorBreakdown.syntaxErrors > 0 && (
+                    <div style={{ color: "#ff8844", marginTop: "2px" }}>
+                      ⚡ Syntax Errors: {result.errorBreakdown.syntaxErrors} × -{result.errorBreakdown.syntaxPenaltyPerError} pts = -{result.errorBreakdown.syntaxErrors * result.errorBreakdown.syntaxPenaltyPerError} pts
+                    </div>
+                  )}
+                  {result.errorBreakdown.runtimeErrors > 0 && (
+                    <div style={{ color: "#ff4488", marginTop: "2px" }}>
+                      💥 Runtime Errors: {result.errorBreakdown.runtimeErrors} × -{result.errorBreakdown.runtimePenaltyPerError} pts = -{result.errorBreakdown.runtimeErrors * result.errorBreakdown.runtimePenaltyPerError} pts
+                    </div>
+                  )}
+                  {result.errorBreakdown.logicalErrors > 0 && (
+                    <div style={{ color: "#ffaa00", marginTop: "2px" }}>
+                      🧠 Logical Errors: {result.errorBreakdown.logicalErrors} × -{result.errorBreakdown.logicalPenaltyPerError} pts = -{result.errorBreakdown.logicalErrors * result.errorBreakdown.logicalPenaltyPerError} pts
+                    </div>
+                  )}
+                </div>
+              )}
 
               <button
                 onClick={() => navigate("/leaderboard")}

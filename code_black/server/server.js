@@ -245,6 +245,19 @@ function startAIService() {
 
   console.log("🤖 Starting AI service...");
 
+  // Build environment with MSYS2 gcc in PATH (for C compilation)
+  const env = { ...process.env };
+  if (isWindows) {
+    const msys2Gcc = "C:\\msys64\\mingw64\\bin";
+    const fs = require("fs");
+    if (fs.existsSync(msys2Gcc + "\\gcc.exe")) {
+      env.PATH = msys2Gcc + ";" + env.PATH;
+      console.log("   [AI] GCC found at " + msys2Gcc);
+    } else {
+      console.log("   [AI] ⚠ GCC not found - C language compilation will fail");
+    }
+  }
+
   aiProcess = spawn(
     pythonCmd,
     ["-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"],
@@ -252,6 +265,7 @@ function startAIService() {
       cwd: aiServiceDir,
       stdio: ["ignore", "pipe", "pipe"],
       shell: isWindows,
+      env: env,
     }
   );
 

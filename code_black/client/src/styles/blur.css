@@ -1,4 +1,4 @@
 .blurred {
-  filter: blur(1.5px);
+  filter: blur(3.5px);
   pointer-events: auto;
 }

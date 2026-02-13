@@ -288,16 +288,28 @@ export default function AdminPanel() {
               {gameState.leaderboard.length === 0 ? (
                 <p style={styles.emptyText}>No scores yet</p>
               ) : (
-                gameState.leaderboard.map((entry) => (
-                  <div key={entry.username} style={styles.lbRow}>
-                    <span style={styles.lbRank}>#{entry.rank}</span>
-                    <span style={styles.lbName}>{entry.username}</span>
-                    <span style={styles.lbScores}>
-                      R1:{entry.round1} R2:{entry.round2}
-                    </span>
-                    <span style={styles.lbTotal}>{entry.total}</span>
-                  </div>
-                ))
+                <>
+                  {gameState.leaderboard.slice(0, 5).map((entry) => (
+                    <div key={entry.username} style={styles.lbRow}>
+                      <span style={styles.lbRank}>#{entry.rank}</span>
+                      <span style={styles.lbName}>
+                        {entry.username}
+                        {entry.rank === 1 && " 🏆"}
+                        {entry.rank === 2 && " 🥈"}
+                      </span>
+                      <span style={styles.lbScores}>
+                        R1:{entry.round1} R2:{entry.round2}
+                      </span>
+                      <span style={styles.lbTotal}>{entry.total}</span>
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => navigate("/admin/leaderboard")}
+                    style={styles.viewFullLbBtn}
+                  >
+                    VIEW FULL LEADERBOARD →
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -480,5 +492,20 @@ const styles = {
     fontSize: "18px",
     width: "50px",
     textAlign: "right",
+  },
+  viewFullLbBtn: {
+    marginTop: "12px",
+    width: "100%",
+    background: "linear-gradient(135deg, #ffd70020, #0a0a0a)",
+    border: "1px solid #ffd70040",
+    color: "#ffd700",
+    padding: "12px 24px",
+    cursor: "pointer",
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: "11px",
+    letterSpacing: "2px",
+    fontWeight: "bold",
+    transition: "all 0.3s",
+    textAlign: "center",
   },
 };
