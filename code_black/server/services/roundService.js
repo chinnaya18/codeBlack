@@ -1,11 +1,11 @@
 const rounds = {
   ROUND_1: {
-    duration: 90 * 60 * 1000, // 1.5 hours
+    duration: 30 * 60 * 1000, // 30 minutes
     points: 50,
     mode: "BLUR",
   },
   ROUND_2: {
-    duration: 60 * 60 * 1000, // 1 hour
+    duration: 30 * 60 * 1000, // 30 minutes
     points: 50,
     mode: "BLACKOUT",
   },

@@ -48,6 +48,20 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo.
 
+:: ─── Kill Existing Processes ──────────────────────────────
+echo [*] Cleaning up previous sessions...
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":5000 " ^| findstr "LISTENING"') do (
+    taskkill /F /PID %%a >nul 2>&1
+)
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":3000 " ^| findstr "LISTENING"') do (
+    taskkill /F /PID %%a >nul 2>&1
+)
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8000 " ^| findstr "LISTENING"') do (
+    taskkill /F /PID %%a >nul 2>&1
+)
+echo     Previous sessions cleaned
+echo.
+
 :: ─── Install Dependencies ─────────────────────────────────
 echo [*] Installing server dependencies...
 cd code_black\server

@@ -324,6 +324,21 @@ app.get("/health", async (req, res) => {
 
 // ─── Start Server ───────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
+
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(`\n❌ Port ${PORT} is already in use!`);
+    console.error(`   Run stop.bat first, or kill the process on port ${PORT}.\n`);
+    console.error(`   Retrying in 3 seconds...\n`);
+    setTimeout(() => {
+      server.close();
+      server.listen(PORT, "0.0.0.0");
+    }, 3000);
+  } else {
+    console.error("Server error:", err);
+  }
+});
+
 server.listen(PORT, "0.0.0.0", () => {
   const lanIP = getLanIP();
   console.log(`\n🖤 CODEBLACK server running`);

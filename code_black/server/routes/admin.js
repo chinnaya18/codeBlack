@@ -42,7 +42,7 @@ router.post("/start-round", authMiddleware, adminOnly, (req, res) => {
     return res.status(400).json({ message: "No problems available for this round" });
   }
 
-  const duration = roundNum === 1 ? 90 * 60 * 1000 : 60 * 60 * 1000;
+  const duration = 30 * 60 * 1000; // 30 minutes per round
   const startTime = Date.now();
   const endTime = startTime + duration;
 
