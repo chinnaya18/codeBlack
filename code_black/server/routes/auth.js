@@ -2,15 +2,12 @@ const express = require("express");
 const jwt = require("jsonwebtoken");
 const router = express.Router();
 
-// ─── Static User Accounts ──────────────────────────────────
-const USERS = {
-  user1: { password: "pass123", role: "competitor" },
-  user2: { password: "pass123", role: "competitor" },
-  user3: { password: "pass123", role: "competitor" },
-  user4: { password: "pass123", role: "competitor" },
-  user5: { password: "pass123", role: "competitor" },
-  admin: { password: "admin123", role: "admin" },
-};
+// ─── Static User Accounts (30 competitors + admin) ─────────
+const USERS = {};
+for (let i = 1; i <= 30; i++) {
+  USERS[`user${i}`] = { password: "pass123", role: "competitor" };
+}
+USERS.admin = { password: "admin123", role: "admin" };
 
 router.post("/login", (req, res) => {
   const { username, password } = req.body;

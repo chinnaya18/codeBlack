@@ -79,7 +79,7 @@ export default function Login() {
         </form>
 
         <p style={styles.hint}>
-          Competitors: user1-user5 / pass123 &nbsp;|&nbsp; Admin: admin /
+          Competitors: user1-user30 / pass123 &nbsp;|&nbsp; Admin: admin /
           admin123
         </p>
       </div>

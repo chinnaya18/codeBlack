@@ -2,26 +2,39 @@ require("dotenv").config();
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
+const os = require("os");
+const path = require("path");
+const { spawn } = require("child_process");
 const { Server } = require("socket.io");
 const problems = require("./data/problems");
+const { healthCheck: aiHealthCheck } = require("./services/aiService");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server, {
+  cors: { origin: "*" },
+  pingInterval: 10000,
+  pingTimeout: 20000,
+});
 
 app.use(cors());
 app.use(express.json());
 
 // ─── In-Memory Game State ───────────────────────────────────
 const gameState = {
-  onlineUsers: {},
+  onlineUsers: {},          // { username: { role, socketId, connected, points, disconnectTimer } }
   currentRound: 0,
-  roundStatus: "waiting",
+  roundStatus: "waiting",   // "waiting" | "active" | "ended"
   roundEndTime: null,
+  roundStartTime: null,
   roundTimer: null,
   submissions: {},
   removedUsers: new Set(),
+  problemAssignments: {},   // { username: { 1: problemIndex, 2: problemIndex } }
+  violations: {},           // { username: count } - fullscreen exit violations
 };
+
+const DISCONNECT_GRACE_MS = 60000; // 60 second grace period before removing user
 
 // Make io and gameState available to routes
 app.use((req, res, next) => {
@@ -40,8 +53,17 @@ app.get("/", (req, res) => res.send("CODEBLACK server running"));
 // ─── Helper Functions ───────────────────────────────────────
 function getOnlineCompetitors() {
   return Object.entries(gameState.onlineUsers)
-    .filter(([, d]) => d.role === "competitor")
+    .filter(([, d]) => d.role === "competitor" && d.connected)
     .map(([username]) => username);
+}
+
+function getAllCompetitors() {
+  return Object.entries(gameState.onlineUsers)
+    .filter(([, d]) => d.role === "competitor")
+    .map(([username, d]) => ({
+      username,
+      connected: d.connected,
+    }));
 }
 
 function getLeaderboard() {
@@ -52,13 +74,53 @@ function getLeaderboard() {
       round1: d.points.round1,
       round2: d.points.round2,
       total: d.points.round1 + d.points.round2,
+      connected: d.connected,
     }))
     .sort((a, b) => b.total - a.total)
     .map((e, i) => ({ ...e, rank: i + 1 }));
 }
 
+/**
+ * Assign a random problem from the pool for a given round to a user.
+ * If already assigned, returns the existing assignment.
+ */
+function assignProblem(username, roundNum) {
+  if (!gameState.problemAssignments[username]) {
+    gameState.problemAssignments[username] = {};
+  }
+  if (gameState.problemAssignments[username][roundNum] !== undefined) {
+    return gameState.problemAssignments[username][roundNum];
+  }
+  const pool = problems[roundNum];
+  if (!pool || pool.length === 0) return null;
+  const randomIndex = Math.floor(Math.random() * pool.length);
+  gameState.problemAssignments[username][roundNum] = randomIndex;
+  return randomIndex;
+}
+
+/**
+ * Get the sanitized problem (no test cases) for a user in a round.
+ */
+function getUserProblem(username, roundNum) {
+  const idx = gameState.problemAssignments[username]?.[roundNum];
+  if (idx === undefined || idx === null) return null;
+  const pool = problems[roundNum];
+  if (!pool || !pool[idx]) return null;
+  const p = pool[idx];
+  return {
+    title: p.title,
+    description: p.description,
+    points: p.points,
+    timeLimit: p.timeLimit,
+    sampleTestCase: p.sampleTestCase || null,
+  };
+}
+
 app.set("getLeaderboard", getLeaderboard);
 app.set("getOnlineCompetitors", getOnlineCompetitors);
+app.set("getAllCompetitors", getAllCompetitors);
+app.set("assignProblem", assignProblem);
+app.set("getUserProblem", getUserProblem);
 
 // ─── Socket.IO ──────────────────────────────────────────────
 io.on("connection", (socket) => {
@@ -70,27 +132,38 @@ io.on("connection", (socket) => {
       return;
     }
 
+    // Clear any pending disconnect timer
+    if (gameState.onlineUsers[username]?.disconnectTimer) {
+      clearTimeout(gameState.onlineUsers[username].disconnectTimer);
+      gameState.onlineUsers[username].disconnectTimer = null;
+    }
+
     if (!gameState.onlineUsers[username]) {
       gameState.onlineUsers[username] = {
         role,
         socketId: socket.id,
+        connected: true,
         points: { round1: 0, round2: 0 },
+        disconnectTimer: null,
       };
     } else {
       gameState.onlineUsers[username].socketId = socket.id;
+      gameState.onlineUsers[username].connected = true;
     }
 
-    // Send current state to newly connected user
-    const problem =
-      gameState.currentRound > 0 && problems[gameState.currentRound]
-        ? {
-            title: problems[gameState.currentRound].title,
-            description: problems[gameState.currentRound].description,
-            points: problems[gameState.currentRound].points,
-            timeLimit: problems[gameState.currentRound].timeLimit,
-          }
-        : null;
+    // If there's an active round, assign a problem to this user (if not already assigned)
+    let problem = null;
+    if (gameState.currentRound > 0 && role === "competitor") {
+      if (gameState.roundStatus === "active") {
+        assignProblem(username, gameState.currentRound);
+        problem = getUserProblem(username, gameState.currentRound);
+      } else if (gameState.roundStatus === "ended") {
+        // Round ended, show their assigned problem if any
+        problem = getUserProblem(username, gameState.currentRound);
+      }
+    }
 
+    // Send current state to newly connected user (with their specific problem)
     socket.emit("state:sync", {
       currentRound: gameState.currentRound,
       roundStatus: gameState.roundStatus,
@@ -102,21 +175,161 @@ io.on("connection", (socket) => {
     io.emit("leaderboard:update", getLeaderboard());
   });
 
+  // Track fullscreen violations
+  socket.on("violation:fullscreen", ({ username }) => {
+    if (!gameState.violations[username]) {
+      gameState.violations[username] = 0;
+    }
+    gameState.violations[username]++;
+    console.log(`⚠ Fullscreen violation by ${username} (count: ${gameState.violations[username]})`);
+    // Notify admin
+    io.emit("violation:update", {
+      username,
+      count: gameState.violations[username],
+      type: "fullscreen_exit",
+    });
+  });
+
   socket.on("disconnect", () => {
     for (const [username, data] of Object.entries(gameState.onlineUsers)) {
       if (data.socketId === socket.id) {
-        delete gameState.onlineUsers[username];
+        // Don't remove immediately - use grace period
+        data.connected = false;
+        console.log(`User disconnected (${DISCONNECT_GRACE_MS / 1000}s grace): ${username}`);
+
+        // Update UI immediately to show disconnected status
         io.emit("users:update", getOnlineCompetitors());
-        io.emit("leaderboard:update", getLeaderboard());
-        console.log("User disconnected:", username);
+
+        // Set timer to fully remove after grace period
+        data.disconnectTimer = setTimeout(() => {
+          if (gameState.onlineUsers[username] && !gameState.onlineUsers[username].connected) {
+            // Keep user data if they have submissions (preserves scores)
+            if (gameState.roundStatus === "active" || Object.keys(gameState.submissions).some(k => k.startsWith(username))) {
+              // Mark as offline but keep in system for leaderboard
+              console.log(`User timeout but keeping for scores: ${username}`);
+            } else {
+              delete gameState.onlineUsers[username];
+              console.log(`User fully removed after timeout: ${username}`);
+            }
+            io.emit("users:update", getOnlineCompetitors());
+            io.emit("leaderboard:update", getLeaderboard());
+          }
+        }, DISCONNECT_GRACE_MS);
+
         break;
       }
     }
   });
 });
 
+// ─── Get LAN IP Address ─────────────────────────────────────
+function getLanIP() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === "IPv4" && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return "localhost";
+}
+
+// ─── AI Service Auto-Start ──────────────────────────────────
+let aiProcess = null;
+
+function startAIService() {
+  const aiServiceDir = path.resolve(__dirname, "..", "ai-service");
+  const isWindows = os.platform() === "win32";
+  const pythonCmd = isWindows ? "py" : "python3";
+
+  console.log("🤖 Starting AI service...");
+
+  aiProcess = spawn(
+    pythonCmd,
+    ["-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"],
+    {
+      cwd: aiServiceDir,
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: isWindows,
+    }
+  );
+
+  aiProcess.stdout.on("data", (data) => {
+    const msg = data.toString().trim();
+    if (msg) console.log(`   [AI] ${msg}`);
+  });
+
+  aiProcess.stderr.on("data", (data) => {
+    const msg = data.toString().trim();
+    if (msg) console.log(`   [AI] ${msg}`);
+  });
+
+  aiProcess.on("error", (err) => {
+    console.error("❌ Failed to start AI service:", err.message);
+    console.log("   Make sure Python and dependencies are installed:");
+    console.log("   cd ai-service && pip install -r requirements.txt");
+    aiProcess = null;
+  });
+
+  aiProcess.on("exit", (code) => {
+    if (code !== null && code !== 0) {
+      console.log(`⚠ AI service exited with code ${code}`);
+    }
+    aiProcess = null;
+  });
+
+  // Give it time to start, then check health
+  setTimeout(async () => {
+    const health = await aiHealthCheck();
+    if (health) {
+      console.log("✅ AI service is healthy");
+    } else {
+      console.log("⚠ AI service not responding yet (may still be starting)");
+    }
+  }, 4000);
+}
+
+// Cleanup on exit
+function cleanupAI() {
+  if (aiProcess) {
+    console.log("\n🛑 Stopping AI service...");
+    aiProcess.kill();
+    aiProcess = null;
+  }
+}
+
+process.on("SIGINT", () => {
+  cleanupAI();
+  process.exit(0);
+});
+process.on("SIGTERM", () => {
+  cleanupAI();
+  process.exit(0);
+});
+process.on("exit", cleanupAI);
+
+// ─── Health Check Endpoint ──────────────────────────────────
+app.get("/health", async (req, res) => {
+  const aiHealth = await aiHealthCheck();
+  res.json({
+    server: "ok",
+    ai: aiHealth ? "ok" : "unavailable",
+    uptime: process.uptime(),
+    competitors: getOnlineCompetitors().length,
+    currentRound: gameState.currentRound,
+    roundStatus: gameState.roundStatus,
+  });
+});
+
 // ─── Start Server ───────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`CODEBLACK server running on port ${PORT}`);
+server.listen(PORT, "0.0.0.0", () => {
+  const lanIP = getLanIP();
+  console.log(`\n🖤 CODEBLACK server running`);
+  console.log(`   Local:   http://localhost:${PORT}`);
+  console.log(`   Network: http://${lanIP}:${PORT}\n`);
+
+  // Auto-start AI service
+  startAIService();
 });

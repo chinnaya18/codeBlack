@@ -1,31 +1,35 @@
 /**
- * Scoring System:
- * - Syntax error:       -50
- * - Runtime error:      -30
- * - Time limit exceeded: -20
- * - Failed test case:   -10 per case
- * - Correct solution:   Full points
+ * Scoring System (Fixed):
+ * - Syntax error:        0 points
+ * - Runtime error:       0 points
+ * - Time limit exceeded: 0 points
+ * - Partial correct:     (passed / total) * basePoints  (proportional)
+ * - All correct:         basePoints + time bonus
+ *
+ * Time Bonus:
+ * - Up to 20% bonus for early submission
+ * - timeBonus = floor(timeRemainingFraction * 0.2 * basePoints)
  */
-function calculateScore(basePoints, results) {
-  let score = basePoints;
+function calculateScore(basePoints, results, timeInfo = null) {
+  let score = 0;
   let errorType = "none";
   const failedCases = [];
   const feedback = [];
 
   if (results.syntaxError) {
-    score -= 50;
+    score = 0;
     errorType = "Syntax Error";
     feedback.push(
       "Your code has syntax errors. Check for missing brackets, colons, or typos.",
     );
   } else if (results.runtimeError) {
-    score -= 30;
+    score = 0;
     errorType = "Runtime Error";
     feedback.push(
       "Your code crashed during execution. Check for division by zero, index errors, etc.",
     );
   } else if (results.timedOut) {
-    score -= 20;
+    score = 0;
     errorType = "Time Limit Exceeded";
     feedback.push(
       "Your code took too long. Optimize your algorithm for better time complexity.",
@@ -35,28 +39,51 @@ function calculateScore(basePoints, results) {
     let passedCount = 0;
 
     testResults.forEach((tr, idx) => {
-      if (!tr.passed) {
-        score -= 10;
+      if (tr.passed) {
+        passedCount++;
+      } else {
         failedCases.push({
           testCase: idx + 1,
           expected: tr.expected,
           got: tr.actual,
         });
-      } else {
-        passedCount++;
       }
     });
 
+    const totalCount = testResults.length;
+
     if (failedCases.length > 0) {
+      // Proportional scoring: partial credit based on test cases passed
+      score = Math.round((passedCount / totalCount) * basePoints);
       errorType = "Wrong Answer";
-      feedback.push(`${passedCount}/${testResults.length} test cases passed.`);
+      feedback.push(`${passedCount}/${totalCount} test cases passed.`);
+      feedback.push(
+        `Partial score: ${score}/${basePoints} points.`,
+      );
     } else {
+      // All test cases passed - full points + time bonus
+      score = basePoints;
       errorType = "Accepted";
-      feedback.push("All test cases passed! Great job!");
+
+      // Calculate time bonus
+      let timeBonus = 0;
+      if (timeInfo && timeInfo.roundEndTime && timeInfo.roundStartTime) {
+        const totalDuration = timeInfo.roundEndTime - timeInfo.roundStartTime;
+        const timeRemaining = Math.max(0, timeInfo.roundEndTime - Date.now());
+        const timeRemainingFraction = timeRemaining / totalDuration;
+        timeBonus = Math.floor(timeRemainingFraction * 0.2 * basePoints);
+        score += timeBonus;
+      }
+
+      if (timeBonus > 0) {
+        feedback.push(
+          `All test cases passed! Full score + ${timeBonus} time bonus!`,
+        );
+      } else {
+        feedback.push("All test cases passed! Great job!");
+      }
     }
   }
-
-  score = Math.max(score, 0);
 
   return {
     score,

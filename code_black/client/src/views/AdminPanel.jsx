@@ -15,6 +15,7 @@ export default function AdminPanel() {
     onlineUsers: [],
     leaderboard: [],
     removedUsers: [],
+    violations: {},
   });
   const [loading, setLoading] = useState({});
   const [message, setMessage] = useState("");
@@ -36,9 +37,17 @@ export default function AdminPanel() {
       setGameState((prev) => ({ ...prev, leaderboard: lb }));
     });
 
+    socket.on("violation:update", ({ username, count }) => {
+      setGameState((prev) => ({
+        ...prev,
+        violations: { ...prev.violations, [username]: count },
+      }));
+    });
+
     return () => {
       socket.off("users:update");
       socket.off("leaderboard:update");
+      socket.off("violation:update");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate, user.role, user.username]);
@@ -246,6 +255,19 @@ export default function AdminPanel() {
                     <div style={styles.userInfo}>
                       <span style={styles.userDot} />
                       <span style={styles.userName}>{u}</span>
+                      {gameState.violations[u] > 0 && (
+                        <span style={{
+                          color: "#ff9900",
+                          fontSize: "9px",
+                          fontWeight: "bold",
+                          border: "1px solid #ff990040",
+                          padding: "1px 6px",
+                          marginLeft: "6px",
+                          letterSpacing: "1px",
+                        }}>
+                          {gameState.violations[u]} VIOLATION{gameState.violations[u] > 1 ? "S" : ""}
+                        </span>
+                      )}
                     </div>
                     <button
                       onClick={() => removeUser(u)}

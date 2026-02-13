@@ -1,4 +1,6 @@
-export const API_URL = "http://localhost:5000";
+// Dynamic URL: works on localhost AND LAN (uses the hostname the browser connected to)
+const hostname = window.location.hostname || "localhost";
+export const API_URL = `http://${hostname}:5000`;
 
 export function getAuthHeaders() {
   const token = localStorage.getItem("token");

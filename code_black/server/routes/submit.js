@@ -29,10 +29,18 @@ router.post("/", authMiddleware, async (req, res) => {
       .json({ message: "Already submitted for this round" });
   }
 
-  const problem = problems[round];
-  if (!problem) {
+  // Get the user's assigned problem (random assignment)
+  const assignmentIdx = gs.problemAssignments?.[username]?.[round];
+  if (assignmentIdx === undefined || assignmentIdx === null) {
+    return res.status(400).json({ message: "No problem assigned to you for this round" });
+  }
+
+  const problemPool = problems[round];
+  if (!problemPool || !problemPool[assignmentIdx]) {
     return res.status(400).json({ message: "Problem not found" });
   }
+
+  const problem = problemPool[assignmentIdx];
 
   try {
     let syntaxError = false;
@@ -70,17 +78,24 @@ router.post("/", authMiddleware, async (req, res) => {
       });
     }
 
+    // Pass time info for time bonus calculation
+    const timeInfo = {
+      roundStartTime: gs.roundStartTime,
+      roundEndTime: gs.roundEndTime,
+    };
+
     const scoring = calculateScore(problem.points, {
       syntaxError,
       runtimeError,
       timedOut,
       testResults,
-    });
+    }, timeInfo);
 
     // Store submission
     gs.submissions[submissionKey] = {
       code,
       language,
+      problemId: problem.id,
       result: scoring,
       timestamp: Date.now(),
     };

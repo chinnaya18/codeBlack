@@ -16,37 +16,39 @@ router.get("/state", authMiddleware, adminOnly, (req, res) => {
   const gs = req.gameState;
   const getLeaderboard = req.app.get("getLeaderboard");
   const getOnlineCompetitors = req.app.get("getOnlineCompetitors");
+  const getAllCompetitors = req.app.get("getAllCompetitors");
 
   res.json({
     currentRound: gs.currentRound,
     roundStatus: gs.roundStatus,
     roundEndTime: gs.roundEndTime,
     onlineUsers: getOnlineCompetitors(),
+    allCompetitors: getAllCompetitors(),
     leaderboard: getLeaderboard(),
     removedUsers: [...gs.removedUsers],
+    violations: gs.violations || {},
+    problemAssignments: gs.problemAssignments || {},
   });
 });
 
-// Start a round
+// Start a round with random problem assignment
 router.post("/start-round", authMiddleware, adminOnly, (req, res) => {
   const gs = req.gameState;
   const { round } = req.body;
   const roundNum = round || (gs.currentRound === 0 ? 1 : gs.currentRound + 1);
 
-  if (roundNum > 2) {
-    return res.status(400).json({ message: "No more rounds available" });
-  }
-
-  const problem = problems[roundNum];
-  if (!problem) {
-    return res.status(400).json({ message: "Problem not found for round" });
+  const problemPool = problems[roundNum];
+  if (!problemPool || problemPool.length === 0) {
+    return res.status(400).json({ message: "No problems available for this round" });
   }
 
   const duration = roundNum === 1 ? 90 * 60 * 1000 : 60 * 60 * 1000;
-  const endTime = Date.now() + duration;
+  const startTime = Date.now();
+  const endTime = startTime + duration;
 
   gs.currentRound = roundNum;
   gs.roundStatus = "active";
+  gs.roundStartTime = startTime;
   gs.roundEndTime = endTime;
 
   // Clear any existing timer
@@ -59,17 +61,26 @@ router.post("/start-round", authMiddleware, adminOnly, (req, res) => {
     req.io.emit("leaderboard:update", req.app.get("getLeaderboard")());
   }, duration);
 
-  // Broadcast round start
-  req.io.emit("round:start", {
-    round: roundNum,
-    endTime,
-    problem: {
-      title: problem.title,
-      description: problem.description,
-      points: problem.points,
-      timeLimit: problem.timeLimit,
-    },
-  });
+  const assignProblem = req.app.get("assignProblem");
+  const getUserProblem = req.app.get("getUserProblem");
+
+  // Broadcast round start to all (for navigation in WaitingRoom)
+  req.io.emit("round:start", { round: roundNum, endTime });
+
+  // Assign random problems individually to each online competitor
+  for (const [username, userData] of Object.entries(gs.onlineUsers)) {
+    if (userData.role === "competitor" && userData.connected) {
+      assignProblem(username, roundNum);
+      const problem = getUserProblem(username, roundNum);
+
+      if (userData.socketId) {
+        req.io.to(userData.socketId).emit("problem:assigned", {
+          round: roundNum,
+          problem,
+        });
+      }
+    }
+  }
 
   res.json({ success: true, round: roundNum, endTime });
 });
@@ -108,6 +119,11 @@ router.post("/remove-user", authMiddleware, adminOnly, (req, res) => {
     req.io.to(userData.socketId).emit("user:removed");
   }
 
+  // Clear any disconnect timer
+  if (userData?.disconnectTimer) {
+    clearTimeout(userData.disconnectTimer);
+  }
+
   delete gs.onlineUsers[username];
 
   req.io.emit("users:update", req.app.get("getOnlineCompetitors")());
@@ -125,8 +141,11 @@ router.post("/reset", authMiddleware, adminOnly, (req, res) => {
   gs.currentRound = 0;
   gs.roundStatus = "waiting";
   gs.roundEndTime = null;
+  gs.roundStartTime = null;
   gs.submissions = {};
   gs.removedUsers.clear();
+  gs.problemAssignments = {};
+  gs.violations = {};
 
   for (const user of Object.values(gs.onlineUsers)) {
     user.points = { round1: 0, round2: 0 };

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import ArenaTopBar from "../components/ArenaTopBar";
 import CodeEditor from "../components/CodeEditor";
+import FullscreenLockdown from "../components/FullscreenLockdown";
 import { submitCode } from "../services/submit";
 import { socket, registerUser } from "../socket/leaderboard";
 import { getUser } from "../services/auth";
@@ -40,11 +41,18 @@ export default function CodingArena() {
         navigate(`/arena?round=${data.round}`);
       }
       setEndTime(data.endTime);
-      setProblem(data.problem);
       setRoundActive(true);
       setEditorLocked(false);
       setSubmitted(false);
       setResult(null);
+      // Problem will arrive via 'problem:assigned' event
+    });
+
+    // Receive individually assigned problem
+    socket.on("problem:assigned", (data) => {
+      if (data.problem) {
+        setProblem(data.problem);
+      }
     });
 
     socket.on("round:end", () => {
@@ -82,6 +90,7 @@ export default function CodingArena() {
 
     return () => {
       socket.off("round:start");
+      socket.off("problem:assigned");
       socket.off("round:end");
       socket.off("user:removed");
       socket.off("state:sync");
@@ -145,6 +154,7 @@ export default function CodingArena() {
   }, [code, language, ROUND, submitted, submitting]);
 
   return (
+    <FullscreenLockdown roundActive={roundActive}>
     <div style={styles.container}>
       <ArenaTopBar time={timeLeft} score={result?.score} round={ROUND} />
 
@@ -298,6 +308,7 @@ export default function CodingArena() {
         </div>
       </div>
     </div>
+    </FullscreenLockdown>
   );
 }
 
