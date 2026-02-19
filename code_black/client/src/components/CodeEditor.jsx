@@ -41,64 +41,23 @@ export default function CodeEditor({
     }
   }, []);
 
-  // Generate line scale markers for round 2
+  // Get first character of current line for round 2
+  const getFirstLetterOfLine = () => {
+    if (!code) return "";
+    const lines = code.split("\n");
+    const currentLine = lines[cursorLine - 1];
+    if (!currentLine) return "";
+    for (let char of currentLine) {
+      if (char !== " " && char !== "\t") {
+        return char;
+      }
+    }
+    return "";
+  };
+
+  // Keep side frame for round 2 but remove markers
   const renderLineScale = () => {
     if (!isRound2) return null;
-    const lines = Math.max(totalLines, 20);
-    const scaleHeight = 100; // percentage
-    const markers = [];
-
-    // Show every 5th line + current line
-    for (let i = 1; i <= lines; i++) {
-      const isCurrentLine = i === cursorLine;
-      const isMarker = i === 1 || i % 5 === 0 || isCurrentLine;
-      if (!isMarker) continue;
-
-      const topPercent = ((i - 1) / Math.max(lines - 1, 1)) * scaleHeight;
-
-      markers.push(
-        <div
-          key={i}
-          style={{
-            position: "absolute",
-            top: `${topPercent}%`,
-            left: 0,
-            right: 0,
-            display: "flex",
-            alignItems: "center",
-            height: "1px",
-            transition: "all 0.15s ease",
-          }}
-        >
-          {/* Line number label */}
-          <span
-            style={{
-              fontSize: isCurrentLine ? "11px" : "8px",
-              color: isCurrentLine ? "#00ff99" : "#333",
-              fontWeight: isCurrentLine ? "bold" : "normal",
-              fontFamily: "'JetBrains Mono', monospace",
-              width: "28px",
-              textAlign: "right",
-              paddingRight: "4px",
-              textShadow: isCurrentLine ? "0 0 8px #00ff99" : "none",
-              transition: "all 0.15s ease",
-            }}
-          >
-            {i}
-          </span>
-          {/* Tick mark */}
-          <div
-            style={{
-              width: isCurrentLine ? "10px" : "4px",
-              height: isCurrentLine ? "3px" : "1px",
-              background: isCurrentLine ? "#00ff99" : "#222",
-              boxShadow: isCurrentLine ? "0 0 6px #00ff99" : "none",
-              transition: "all 0.15s ease",
-            }}
-          />
-        </div>
-      );
-    }
 
     return (
       <div
@@ -114,25 +73,25 @@ export default function CodeEditor({
           pointerEvents: "none",
           borderRight: "1px solid #1a1a1a",
           background: "linear-gradient(90deg, #000000, #00000000)",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
-        <div style={{ position: "relative", flex: 1 }}>
-          {markers}
-        </div>
-        {/* Current line indicator at bottom */}
+        {/* First letter of current line */}
         <div
           style={{
-            textAlign: "center",
-            padding: "4px 0",
-            borderTop: "1px solid #1a1a1a",
+            fontSize: "14px",
             color: "#00ff99",
-            fontSize: "10px",
             fontWeight: "bold",
             fontFamily: "'JetBrains Mono', monospace",
             textShadow: "0 0 8px #00ff9960",
+            minHeight: "20px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
-          L{cursorLine}
+          {getFirstLetterOfLine()}
         </div>
       </div>
     );
@@ -212,13 +171,13 @@ export default function CodeEditor({
       {/* Round 2 line position scale on the left */}
       {isRound2 && renderLineScale()}
 
-      {/* Round 2 cursor line indicator — glowing line at cursor area */}
+      {/* Round 2 cursor styling — no highlight glow */}
       {isRound2 && (
         <style>{`
           .monaco-editor .cursor {
             background-color: #00ff99 !important;
             border-color: #00ff99 !important;
-            box-shadow: 0 0 12px #00ff99, 0 0 24px #00ff9960 !important;
+            box-shadow: none !important;
             z-index: 100 !important;
             opacity: 1 !important;
           }

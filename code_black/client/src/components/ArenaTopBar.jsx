@@ -4,7 +4,11 @@ export default function ArenaTopBar({ time, score, round }) {
   return (
     <div style={styles.bar}>
       <div style={styles.left}>
-        <span style={styles.logo}>CODEBLACK</span>
+        <img
+          src={process.env.PUBLIC_URL + "/logo192.png"}
+          alt="CodeBlack"
+          style={styles.logoImg}
+        />
         {round && <span style={styles.round}>ROUND {round}</span>}
       </div>
 
@@ -45,11 +49,14 @@ const styles = {
     boxSizing: "border-box",
   },
   left: { display: "flex", alignItems: "center", gap: "16px" },
-  logo: {
-    fontWeight: "bold",
-    letterSpacing: "3px",
-    fontSize: "16px",
-    textShadow: "0 0 10px #00ff9930",
+  logoImg: {
+    height: 36,
+    width: 36,
+    borderRadius: "50%",
+    border: "2px solid #00ff9940",
+    boxShadow: "0 0 12px #00ff9920",
+    objectFit: "cover",
+    background: "#0a0a0a",
   },
   round: {
     background: "#00ff9915",

@@ -8,8 +8,11 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [isRegister, setIsRegister] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Auto-redirect if already logged in
   useEffect(() => {
@@ -22,6 +25,7 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setSuccess("");
 
     if (isRegister) {
       if (password !== confirmPassword) {
@@ -44,13 +48,18 @@ export default function Login() {
       let data;
       if (isRegister) {
         data = await registerUserAPI(username.trim(), password);
+        setSuccess(`Registration successful! Now login with your credentials.`);
+        setUsername("");
+        setPassword("");
+        setConfirmPassword("");
+        // Stay on register tab but show success - user will manually switch to login
       } else {
         data = await loginUser(username.trim(), password);
-      }
-      if (data.role === "admin") {
-        navigate("/admin");
-      } else {
-        navigate("/waiting");
+        if (data.role === "admin") {
+          navigate("/admin");
+        } else {
+          navigate("/waiting");
+        }
       }
     } catch (err) {
       setError(err.message);
@@ -76,7 +85,7 @@ export default function Login() {
         {/* Toggle Tabs */}
         <div style={styles.tabRow}>
           <button
-            onClick={() => { setIsRegister(false); setError(""); }}
+            onClick={() => { setIsRegister(false); setError(""); setSuccess(""); }}
             style={{
               ...styles.tab,
               ...(isRegister ? {} : styles.tabActive),
@@ -85,7 +94,7 @@ export default function Login() {
             LOGIN
           </button>
           <button
-            onClick={() => { setIsRegister(true); setError(""); }}
+            onClick={() => { setIsRegister(true); setError(""); setSuccess(""); }}
             style={{
               ...styles.tab,
               ...(isRegister ? styles.tabActive : {}),
@@ -111,31 +120,50 @@ export default function Login() {
 
           <div style={styles.inputGroup}>
             <label style={styles.label}>PASSWORD</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              style={styles.input}
-              placeholder="Enter password"
-            />
+            <div style={styles.passwordWrapper}>
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                style={styles.input}
+                placeholder="Enter password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={styles.eyeBtn}
+              >
+                {showPassword ? "👁" : "👁‍🗨"}
+              </button>
+            </div>
           </div>
 
           {isRegister && (
             <div style={styles.inputGroup}>
               <label style={styles.label}>CONFIRM PASSWORD</label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                style={styles.input}
-                placeholder="Confirm password"
-              />
+              <div style={styles.passwordWrapper}>
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  style={styles.input}
+                  placeholder="Confirm password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  style={styles.eyeBtn}
+                >
+                  {showConfirmPassword ? "👁" : "👁‍🗨"}
+                </button>
+              </div>
             </div>
           )}
 
           {error && <div style={styles.error}>{error}</div>}
+          {success && <div style={styles.success}>{success}</div>}
 
           <button type="submit" style={styles.button} disabled={loading}>
             {loading
@@ -143,12 +171,6 @@ export default function Login() {
               : (isRegister ? "CREATE ACCOUNT" : "ENTER ARENA")}
           </button>
         </form>
-
-        <p style={styles.hint}>
-          {isRegister
-            ? "Create your account, then login to compete"
-            : "Admin login: admin / admin123"}
-        </p>
       </div>
     </div>
   );
@@ -253,12 +275,14 @@ const styles = {
   input: {
     backgroundColor: "#080808",
     border: "1px solid #1a3a2a",
-    padding: "14px 16px",
+    padding: "14px 40px 14px 16px",
     color: "#00ff99",
     fontSize: "14px",
     fontFamily: "'JetBrains Mono', monospace",
     outline: "none",
     transition: "all 0.3s",
+    width: "100%",
+    boxSizing: "border-box",
   },
   button: {
     backgroundColor: "#00ff99",
@@ -287,5 +311,30 @@ const styles = {
     textAlign: "center",
     marginTop: "24px",
     letterSpacing: "0.5px",
+  },
+  passwordWrapper: {
+    position: "relative",
+    display: "flex",
+    alignItems: "center",
+  },
+  eyeBtn: {
+    position: "absolute",
+    right: "12px",
+    background: "none",
+    border: "none",
+    color: "#00ff99",
+    cursor: "pointer",
+    fontSize: "16px",
+    padding: "0",
+    transition: "all 0.3s",
+  },
+  success: {
+    color: "#00ff99",
+    fontSize: "12px",
+    textAlign: "center",
+    padding: "10px",
+    border: "1px solid #00ff9925",
+    background: "#00ff9908",
+    marginBottom: "12px",
   },
 };

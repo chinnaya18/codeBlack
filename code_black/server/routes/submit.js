@@ -86,7 +86,7 @@ router.post("/", authMiddleware, async (req, res) => {
       roundEndTime: gs.roundEndTime,
     };
 
-    const scoring = calculateScore(problem.points, aiResult, timeInfo, language);
+    const scoring = calculateScore(problem.points, aiResult, timeInfo, language, round);
 
     // Store submission
     gs.submissions[submissionKey] = {

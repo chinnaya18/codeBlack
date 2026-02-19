@@ -42,12 +42,9 @@ export async function registerUser(username, password) {
 
     const data = await res.json();
 
-    // Store auth data (auto-login after registration)
-    localStorage.setItem("token", data.token);
-    localStorage.setItem("username", data.username);
-    localStorage.setItem("role", data.role);
-
-    return data;
+    // Do NOT auto-login - let user login manually
+    // Return registration success without storing auth
+    return { username: data.username, registered: true };
   } catch (err) {
     throw new Error(err.message || "Registration failed");
   }

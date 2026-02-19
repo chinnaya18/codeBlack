@@ -17,6 +17,10 @@
  * Time Limit Exceeded: 10% of adjusted points only
  * 
  * Irrelevant Program: 0 points (code does not solve the problem)
+ * 
+ * STRICT MODE (Rounds 1 & 2):
+ * - Must pass at least 50% of test cases or score = 0 (Irrelevant)
+ * - Logical error penalty multiplied by 1.5x
  */
 
 const LANGUAGE_DEDUCTIONS = {
@@ -32,10 +36,11 @@ const ERROR_PENALTIES = {
   runtime: 8,   // -8 per runtime error
 };
 
-function calculateScore(basePoints, aiResult, timeInfo = null, language = "python") {
+function calculateScore(basePoints, aiResult, timeInfo = null, language = "python", round = 1) {
   let score = 0;
   let errorType = "none";
   const feedback = [];
+  const isStrictRound = (round === 1 || round === 2); // Both rounds are strict
 
   // ── Step 1: Language deduction ──
   const langDeduction = LANGUAGE_DEDUCTIONS[language] || 0;
@@ -130,14 +135,34 @@ function calculateScore(basePoints, aiResult, timeInfo = null, language = "pytho
     return buildResult(score, errorType, feedback, language, langDeduction, totalTests, passedTests, 0, 0, 0);
   }
 
+  // ── Step 3.5: Strict mode — less than half test cases passed = Irrelevant ──
+  if (isStrictRound && totalTests > 0 && passedTests < Math.ceil(totalTests / 2)) {
+    score = 0;
+    errorType = "Irrelevant Program";
+
+    feedback.push(`${passedTests}/${totalTests} test cases passed — insufficient for this round.`);
+    feedback.push("In competitive rounds, you must pass at least half the test cases to earn points.");
+    feedback.push("Your program does not adequately solve the given problem.");
+    feedback.push(`Score: 0/${adjustedPoints}`);
+
+    const firstFailed = testResults.find(t => !t.passed);
+    if (firstFailed) {
+      feedback.push(`Expected: "${firstFailed.expected}", Got: "${firstFailed.actual}"`);
+    }
+
+    return buildResult(score, errorType, feedback, language, langDeduction, totalTests, passedTests, 0, 0, logicalErrors);
+  }
+
   // ── Step 4: Logical errors (some test cases failed, some passed) ──
   if (logicalErrors > 0) {
-    const logicalPenalty = logicalErrors * ERROR_PENALTIES.logical;
+    // Strict rounds apply heavier logical penalties
+    const penaltyMultiplier = isStrictRound ? 1.5 : 1;
+    const logicalPenalty = Math.round(logicalErrors * ERROR_PENALTIES.logical * penaltyMultiplier);
     score = Math.max(0, adjustedPoints - logicalPenalty);
     errorType = "Wrong Answer";
 
     feedback.push(`${passedTests}/${totalTests} test cases passed.`);
-    feedback.push(`${logicalErrors} logical error(s) → -${logicalPenalty} pts (${logicalErrors} × ${ERROR_PENALTIES.logical})`);
+    feedback.push(`${logicalErrors} logical error(s) → -${logicalPenalty} pts (${logicalErrors} × ${ERROR_PENALTIES.logical}${isStrictRound ? " × 1.5 strict" : ""})`);
     feedback.push(`Score: ${score}/${adjustedPoints}`);
 
     // Show first failed test case

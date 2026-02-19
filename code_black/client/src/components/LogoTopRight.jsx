@@ -12,10 +12,11 @@ export default function LogoTopLeft() {
   }, []);
 
   const logoSize = isMobile ? 36 : 48;
-  const padding = isMobile ? 8 : 12;
+  const topPadding = isMobile ? 16 : 20;
+  const leftPadding = isMobile ? 16 : 20;
 
   return (
-    <div style={{ ...styles.wrapper, top: padding, left: padding }}>
+    <div style={{ ...styles.wrapper, top: topPadding, left: leftPadding }}>
       <img
         src={process.env.PUBLIC_URL + "/logo192.png"}
         alt="CodeBlack Logo"
@@ -34,8 +35,8 @@ const styles = {
   },
   logo: {
     borderRadius: "50%",
-    border: "1px solid #00ff9930",
-    boxShadow: "0 0 16px #00ff9915",
+    border: "2px solid #00ff9940",
+    boxShadow: "0 0 20px #00ff9920",
     objectFit: "cover",
     background: "#0a0a0a",
     transition: "all 0.3s ease",
