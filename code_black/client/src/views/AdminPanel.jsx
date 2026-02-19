@@ -130,6 +130,20 @@ export default function AdminPanel() {
     }
   };
 
+  const revokeKick = async (username) => {
+    if (!window.confirm(`Revoke kick for ${username}? They will be able to rejoin.`)) return;
+    try {
+      await fetchWithAuth("/admin/revoke-kick", {
+        method: "POST",
+        body: JSON.stringify({ username }),
+      });
+      showMessage(`Kick revoked for ${username}. They can rejoin now.`);
+      fetchState();
+    } catch (err) {
+      showMessage(`Error: ${err.message}`);
+    }
+  };
+
   const getStatusColor = () => {
     switch (gameState.roundStatus) {
       case "active":
@@ -367,9 +381,17 @@ export default function AdminPanel() {
                       🔄 TAB SWITCH — AUTO KICKED
                     </span>
                   </div>
-                  <span style={{ color: "#555", fontSize: "10px" }}>
-                    {new Date(entry.timestamp).toLocaleTimeString()}
-                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <span style={{ color: "#555", fontSize: "10px" }}>
+                      {new Date(entry.timestamp).toLocaleTimeString()}
+                    </span>
+                    <button
+                      onClick={() => revokeKick(entry.username)}
+                      style={styles.revokeBtn}
+                    >
+                      ↩ REVOKE
+                    </button>
+                  </div>
                 </div>
               ))}
               {(gameState.removedUsers || []).filter(u => 
@@ -395,6 +417,12 @@ export default function AdminPanel() {
                       MANUALLY REMOVED
                     </span>
                   </div>
+                  <button
+                    onClick={() => revokeKick(u)}
+                    style={styles.revokeBtn}
+                  >
+                    ↩ REVOKE
+                  </button>
                 </div>
               ))}
             </div>
@@ -547,6 +575,18 @@ const styles = {
     fontFamily: "'JetBrains Mono', monospace",
     fontSize: "9px",
     letterSpacing: "1px",
+    transition: "all 0.3s",
+  },
+  revokeBtn: {
+    background: "#00ff9915",
+    border: "1px solid #00ff9940",
+    color: "#00ff99",
+    padding: "4px 14px",
+    cursor: "pointer",
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: "9px",
+    letterSpacing: "1px",
+    fontWeight: "bold",
     transition: "all 0.3s",
   },
   emptyText: {

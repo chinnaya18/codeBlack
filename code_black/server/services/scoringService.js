@@ -126,7 +126,8 @@ function calculateScore(basePoints, aiResult, timeInfo = null, language = "pytho
       feedback.push(`Expected: "${firstFailed.expected}", Got: "${firstFailed.actual}"`);
     }
 
-    return buildResult(score, errorType, feedback, language, langDeduction, totalTests, passedTests, 0, 0, totalTests);
+    // Pass 0 for logicalErrors — irrelevant program is NOT a logical error
+    return buildResult(score, errorType, feedback, language, langDeduction, totalTests, passedTests, 0, 0, 0);
   }
 
   // ── Step 4: Logical errors (some test cases failed, some passed) ──

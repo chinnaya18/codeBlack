@@ -179,4 +179,35 @@ router.post("/reset", authMiddleware, adminOnly, (req, res) => {
   res.json({ success: true });
 });
 
+// Revoke a kick/removal decision — allow user back into competition
+router.post("/revoke-kick", authMiddleware, adminOnly, (req, res) => {
+  const { username } = req.body;
+  const gs = req.gameState;
+
+  if (!username) {
+    return res.status(400).json({ message: "Username is required" });
+  }
+
+  // Remove from removedUsers set
+  gs.removedUsers.delete(username);
+
+  // Remove from tabKicked list
+  gs.tabKicked = (gs.tabKicked || []).filter(k => k.username !== username);
+
+  // Clear kicked flag from violations
+  if (gs.violations[username]) {
+    gs.violations[username].kicked = false;
+    gs.violations[username].tabSwitch = 0;
+  }
+
+  // Notify the user's socket if they are still connected
+  // They will need to re-login, but the block is removed
+  req.io.emit("user:kick_revoked", { username });
+
+  // Update admin views
+  req.io.emit("users:update", req.app.get("getOnlineCompetitors")());
+
+  res.json({ success: true, message: `Kick decision revoked for ${username}` });
+});
+
 module.exports = router;

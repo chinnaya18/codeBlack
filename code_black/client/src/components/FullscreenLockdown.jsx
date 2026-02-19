@@ -17,6 +17,7 @@ export default function FullscreenLockdown({ roundActive, children }) {
   const [violationCount, setViolationCount] = useState(0);
   const [kicked, setKicked] = useState(false);
   const violationRef = useRef(0);
+  const kickedRef = useRef(false);
   const user = getUser();
   const roundActiveRef = useRef(roundActive);
   roundActiveRef.current = roundActive;
@@ -146,10 +147,11 @@ export default function FullscreenLockdown({ roundActive, children }) {
       return e.returnValue;
     };
 
-    // Detect visibility change (tab switch) — KICK USER IMMEDIATELY
+    // Detect visibility change (tab switch) — KICK USER IMMEDIATELY (only once)
     const handleVisibilityChange = () => {
-      if (document.hidden && roundActiveRef.current) {
+      if (document.hidden && roundActiveRef.current && !kickedRef.current) {
         // Tab switch detected — kick the user from the competition
+        kickedRef.current = true;
         socket.emit("violation:tab_switch", {
           username: user.username,
         });
@@ -162,9 +164,20 @@ export default function FullscreenLockdown({ roundActive, children }) {
     window.addEventListener("beforeunload", handleBeforeUnload);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
-    // Listen for server confirmation of kick
+    // Listen for server confirmation of kick (only set once)
     socket.on("user:kicked", () => {
-      setKicked(true);
+      if (!kickedRef.current) {
+        kickedRef.current = true;
+        setKicked(true);
+      }
+    });
+
+    // Listen for kick revoke from admin
+    socket.on("user:kick_revoked", ({ username: revokedUser }) => {
+      if (revokedUser === user.username) {
+        kickedRef.current = false;
+        setKicked(false);
+      }
     });
 
     return () => {
@@ -173,6 +186,7 @@ export default function FullscreenLockdown({ roundActive, children }) {
       window.removeEventListener("beforeunload", handleBeforeUnload);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       socket.off("user:kicked");
+      socket.off("user:kick_revoked");
     };
   }, [roundActive, user.username]);
 

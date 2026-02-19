@@ -1,13 +1,15 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { loginUser, isLoggedIn, getUser } from "../services/auth";
+import { loginUser, registerUser as registerUserAPI, isLoggedIn, getUser } from "../services/auth";
 
 export default function Login() {
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isRegister, setIsRegister] = useState(false);
 
   // Auto-redirect if already logged in
   useEffect(() => {
@@ -20,10 +22,31 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+
+    if (isRegister) {
+      if (password !== confirmPassword) {
+        setError("Passwords do not match");
+        return;
+      }
+      if (password.length < 4) {
+        setError("Password must be at least 4 characters");
+        return;
+      }
+      if (username.trim().length < 2) {
+        setError("Username must be at least 2 characters");
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
-      const data = await loginUser(username, password);
+      let data;
+      if (isRegister) {
+        data = await registerUserAPI(username.trim(), password);
+      } else {
+        data = await loginUser(username.trim(), password);
+      }
       if (data.role === "admin") {
         navigate("/admin");
       } else {
@@ -41,9 +64,36 @@ export default function Login() {
       <div style={styles.particles} />
 
       <div style={styles.glowBox}>
+        <img
+          src={process.env.PUBLIC_URL + "/logo192.png"}
+          alt="CodeBlack Logo"
+          style={styles.logoImg}
+        />
         <h1 style={styles.title}>CODEBLACK</h1>
         <p style={styles.subtitle}>COMPETITIVE CODING ARENA</p>
         <div style={styles.line} />
+
+        {/* Toggle Tabs */}
+        <div style={styles.tabRow}>
+          <button
+            onClick={() => { setIsRegister(false); setError(""); }}
+            style={{
+              ...styles.tab,
+              ...(isRegister ? {} : styles.tabActive),
+            }}
+          >
+            LOGIN
+          </button>
+          <button
+            onClick={() => { setIsRegister(true); setError(""); }}
+            style={{
+              ...styles.tab,
+              ...(isRegister ? styles.tabActive : {}),
+            }}
+          >
+            REGISTER
+          </button>
+        </div>
 
         <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.inputGroup}>
@@ -71,16 +121,33 @@ export default function Login() {
             />
           </div>
 
+          {isRegister && (
+            <div style={styles.inputGroup}>
+              <label style={styles.label}>CONFIRM PASSWORD</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                style={styles.input}
+                placeholder="Confirm password"
+              />
+            </div>
+          )}
+
           {error && <div style={styles.error}>{error}</div>}
 
           <button type="submit" style={styles.button} disabled={loading}>
-            {loading ? "AUTHENTICATING..." : "ENTER ARENA"}
+            {loading
+              ? (isRegister ? "REGISTERING..." : "AUTHENTICATING...")
+              : (isRegister ? "CREATE ACCOUNT" : "ENTER ARENA")}
           </button>
         </form>
 
         <p style={styles.hint}>
-          Competitors: user1-user30 / pass123 &nbsp;|&nbsp; Admin: admin /
-          admin123
+          {isRegister
+            ? "Create your account, then login to compete"
+            : "Admin login: admin / admin123"}
         </p>
       </div>
     </div>
@@ -115,6 +182,16 @@ const styles = {
     minWidth: "380px",
     animation: "fadeIn 0.8s ease",
   },
+  logoImg: {
+    display: "block",
+    margin: "0 auto 16px",
+    height: 72,
+    width: 72,
+    borderRadius: "50%",
+    border: "2px solid #00ff9930",
+    objectFit: "cover",
+    background: "#0a0a0a",
+  },
   title: {
     fontSize: "2.8rem",
     color: "#00ff99",
@@ -134,6 +211,29 @@ const styles = {
     height: "1px",
     background: "linear-gradient(90deg, transparent, #00ff9930, transparent)",
     margin: "28px 0",
+  },
+  tabRow: {
+    display: "flex",
+    marginBottom: "20px",
+    gap: "0",
+    border: "1px solid #1a3a2a",
+  },
+  tab: {
+    flex: 1,
+    padding: "10px",
+    background: "transparent",
+    border: "none",
+    color: "#555",
+    fontSize: "11px",
+    letterSpacing: "3px",
+    cursor: "pointer",
+    fontFamily: "'JetBrains Mono', monospace",
+    transition: "all 0.3s",
+  },
+  tabActive: {
+    background: "#00ff9915",
+    color: "#00ff99",
+    borderBottom: "2px solid #00ff99",
   },
   form: {
     display: "flex",

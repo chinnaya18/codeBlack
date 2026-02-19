@@ -1,3 +1,4 @@
+import { useState, useCallback } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -10,6 +11,8 @@ import CodingArena from "./views/CodingArena";
 import Leaderboard from "./views/Leaderboard";
 import AdminPanel from "./views/AdminPanel";
 import AdminLeaderboard from "./views/AdminLeaderboard";
+import LogoTopLeft from "./components/LogoTopRight";
+import SplashScreen from "./components/SplashScreen";
 import { isLoggedIn, getUser } from "./services/auth";
 import "./styles/cyber.css";
 import "./styles/glitch.css";
@@ -22,8 +25,16 @@ function ProtectedRoute({ children, adminOnly = false }) {
 }
 
 function App() {
+  const [splashDone, setSplashDone] = useState(false);
+  const handleSplashFinish = useCallback(() => setSplashDone(true), []);
+
+  if (!splashDone) {
+    return <SplashScreen onFinish={handleSplashFinish} />;
+  }
+
   return (
     <Router>
+      <LogoTopLeft />
       <Routes>
         <Route path="/" element={<Login />} />
         <Route
