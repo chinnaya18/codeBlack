@@ -41,7 +41,7 @@ export default function Leaderboard() {
   };
 
   const getRankIcon = (rank) => {
-    if (rank === 1) return "🏆";
+    if (rank === 1) return "🥇";
     if (rank === 2) return "🥈";
     return `#${rank}`;
   };

@@ -55,7 +55,7 @@ export default function AdminLeaderboard() {
   };
 
   const getRankLabel = (rank) => {
-    if (rank === 1) return "🏆 WINNER";
+    if (rank === 1) return "🥇 WINNER";
     if (rank === 2) return "🥈 RUNNER-UP";
     return `#${rank}`;
   };
@@ -99,7 +99,7 @@ export default function AdminLeaderboard() {
 
           {/* Winner */}
           <div style={{ ...styles.podiumCard, ...styles.podiumWinner }}>
-            <div style={styles.podiumRank1}>🏆</div>
+            <div style={styles.podiumRank1}>🥇</div>
             <div style={{ ...styles.podiumName, color: "#ffd700" }}>
               {leaderboard[0]?.username}
             </div>
@@ -212,7 +212,7 @@ export default function AdminLeaderboard() {
                   }}
                 >
                   {entry.rank === 1 && (
-                    <span style={styles.winnerBadge}>🏆 WINNER</span>
+                    <span style={styles.winnerBadge}>🥇 WINNER</span>
                   )}
                   {entry.rank === 2 && (
                     <span style={styles.runnerBadge}>🥈 RUNNER-UP</span>

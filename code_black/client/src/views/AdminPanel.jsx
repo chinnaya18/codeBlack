@@ -16,6 +16,7 @@ export default function AdminPanel() {
     leaderboard: [],
     removedUsers: [],
     violations: {},
+    tabKicked: [],
   });
   const [loading, setLoading] = useState({});
   const [message, setMessage] = useState("");
@@ -37,10 +38,17 @@ export default function AdminPanel() {
       setGameState((prev) => ({ ...prev, leaderboard: lb }));
     });
 
-    socket.on("violation:update", ({ username, count }) => {
+    socket.on("violation:update", ({ username, count, fullscreen, tabSwitch, type, kicked }) => {
       setGameState((prev) => ({
         ...prev,
-        violations: { ...prev.violations, [username]: count },
+        violations: { ...prev.violations, [username]: { count, fullscreen: fullscreen || 0, tabSwitch: tabSwitch || 0, kicked: kicked || false } },
+      }));
+    });
+
+    socket.on("user:tab_kicked", ({ username, timestamp }) => {
+      setGameState((prev) => ({
+        ...prev,
+        tabKicked: [...(prev.tabKicked || []), { username, timestamp }],
       }));
     });
 
@@ -48,6 +56,7 @@ export default function AdminPanel() {
       socket.off("users:update");
       socket.off("leaderboard:update");
       socket.off("violation:update");
+      socket.off("user:tab_kicked");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate, user.role, user.username]);
@@ -255,7 +264,7 @@ export default function AdminPanel() {
                     <div style={styles.userInfo}>
                       <span style={styles.userDot} />
                       <span style={styles.userName}>{u}</span>
-                      {gameState.violations[u] > 0 && (
+                      {gameState.violations[u] && gameState.violations[u].fullscreen > 0 && (
                         <span style={{
                           color: "#ff9900",
                           fontSize: "9px",
@@ -265,7 +274,21 @@ export default function AdminPanel() {
                           marginLeft: "6px",
                           letterSpacing: "1px",
                         }}>
-                          {gameState.violations[u]} VIOLATION{gameState.violations[u] > 1 ? "S" : ""}
+                          🖥️ {gameState.violations[u].fullscreen} FULLSCREEN
+                        </span>
+                      )}
+                      {gameState.violations[u] && gameState.violations[u].kicked && (
+                        <span style={{
+                          color: "#ff4444",
+                          fontSize: "9px",
+                          fontWeight: "bold",
+                          border: "1px solid #ff444440",
+                          padding: "1px 6px",
+                          marginLeft: "6px",
+                          letterSpacing: "1px",
+                          background: "#ff444410",
+                        }}>
+                          ⛔ KICKED
                         </span>
                       )}
                     </div>
@@ -294,7 +317,7 @@ export default function AdminPanel() {
                       <span style={styles.lbRank}>#{entry.rank}</span>
                       <span style={styles.lbName}>
                         {entry.username}
-                        {entry.rank === 1 && " 🏆"}
+                        {entry.rank === 1 && " 🥇"}
                         {entry.rank === 2 && " 🥈"}
                       </span>
                       <span style={styles.lbScores}>
@@ -314,6 +337,69 @@ export default function AdminPanel() {
             </div>
           </div>
         </div>
+
+        {/* ─── Disqualified Users (Tab Switch Kicks) ─── */}
+        {(gameState.tabKicked?.length > 0 || gameState.removedUsers?.length > 0) && (
+          <div style={{ ...styles.section, border: "1px solid #ff444430" }}>
+            <h3 style={{ ...styles.sectionTitle, color: "#ff4444" }}>
+              ⛔ DISQUALIFIED / REMOVED USERS
+            </h3>
+            <div style={styles.list}>
+              {(gameState.tabKicked || []).map((entry, idx) => (
+                <div key={`kicked-${idx}`} style={{
+                  ...styles.userRow,
+                  borderLeft: "3px solid #ff4444",
+                  background: "#1a0808",
+                }}>
+                  <div style={styles.userInfo}>
+                    <span style={{ ...styles.userDot, background: "#ff4444", boxShadow: "0 0 8px #ff4444" }} />
+                    <span style={{ ...styles.userName, color: "#ff6666" }}>{entry.username}</span>
+                    <span style={{
+                      color: "#ff4444",
+                      fontSize: "9px",
+                      fontWeight: "bold",
+                      border: "1px solid #ff444440",
+                      background: "#ff444415",
+                      padding: "1px 8px",
+                      marginLeft: "8px",
+                      letterSpacing: "1px",
+                    }}>
+                      🔄 TAB SWITCH — AUTO KICKED
+                    </span>
+                  </div>
+                  <span style={{ color: "#555", fontSize: "10px" }}>
+                    {new Date(entry.timestamp).toLocaleTimeString()}
+                  </span>
+                </div>
+              ))}
+              {(gameState.removedUsers || []).filter(u => 
+                !(gameState.tabKicked || []).some(k => k.username === u)
+              ).map((u) => (
+                <div key={`removed-${u}`} style={{
+                  ...styles.userRow,
+                  borderLeft: "3px solid #ff9900",
+                  background: "#1a1008",
+                }}>
+                  <div style={styles.userInfo}>
+                    <span style={{ ...styles.userDot, background: "#ff9900", boxShadow: "0 0 8px #ff9900" }} />
+                    <span style={{ ...styles.userName, color: "#ff9900" }}>{u}</span>
+                    <span style={{
+                      color: "#ff9900",
+                      fontSize: "9px",
+                      fontWeight: "bold",
+                      border: "1px solid #ff990040",
+                      padding: "1px 8px",
+                      marginLeft: "8px",
+                      letterSpacing: "1px",
+                    }}>
+                      MANUALLY REMOVED
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

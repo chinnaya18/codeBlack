@@ -16,7 +16,7 @@
  * 
  * Time Limit Exceeded: 10% of adjusted points only
  * 
- * Time Bonus: up to +20% for early submission (only if all tests pass)
+ * Irrelevant Program: 0 points (code does not solve the problem)
  */
 
 const LANGUAGE_DEDUCTIONS = {
@@ -54,6 +54,16 @@ function calculateScore(basePoints, aiResult, timeInfo = null, language = "pytho
   const testResults = aiResult.test_results || [];
   const totalTests = testResults.length;
   const passedTests = testResults.filter(t => t.passed).length;
+
+  // ── Guard: If no test results and no errors, treat as irrelevant program ──
+  if (totalTests === 0 && !aiResult.compilation_error && !aiResult.syntax_error && !aiResult.runtime_error && !aiResult.timed_out) {
+    score = 0;
+    errorType = "Irrelevant Program";
+    feedback.push("Your code does not produce valid output for any test case.");
+    feedback.push("Please submit a program that solves the given problem.");
+    feedback.push(`Score: 0/${adjustedPoints}`);
+    return buildResult(score, errorType, feedback, language, langDeduction, 0, 0, 0, 0, 0);
+  }
 
   // Compilation / Syntax errors
   if (aiResult.compilation_error || aiResult.syntax_error) {
@@ -101,7 +111,25 @@ function calculateScore(basePoints, aiResult, timeInfo = null, language = "pytho
     return buildResult(score, errorType, feedback, language, langDeduction, totalTests, passedTests, syntaxErrors, runtimeErrors, logicalErrors);
   }
 
-  // ── Step 3: Logical errors (wrong output on test cases) ──
+  // ── Step 3: Check if program is irrelevant (ALL test cases failed) ──
+  if (totalTests > 0 && passedTests === 0) {
+    score = 0;
+    errorType = "Irrelevant Program";
+
+    feedback.push(`0/${totalTests} test cases passed — your program does not produce correct output.`);
+    feedback.push("This program appears irrelevant to the given problem. Please review the problem statement.");
+    feedback.push(`Score: 0/${adjustedPoints}`);
+
+    // Show first failed test case
+    const firstFailed = testResults.find(t => !t.passed);
+    if (firstFailed) {
+      feedback.push(`Expected: "${firstFailed.expected}", Got: "${firstFailed.actual}"`);
+    }
+
+    return buildResult(score, errorType, feedback, language, langDeduction, totalTests, passedTests, 0, 0, totalTests);
+  }
+
+  // ── Step 4: Logical errors (some test cases failed, some passed) ──
   if (logicalErrors > 0) {
     const logicalPenalty = logicalErrors * ERROR_PENALTIES.logical;
     score = Math.max(0, adjustedPoints - logicalPenalty);
@@ -120,25 +148,11 @@ function calculateScore(basePoints, aiResult, timeInfo = null, language = "pytho
     return buildResult(score, errorType, feedback, language, langDeduction, totalTests, passedTests, syntaxErrors, runtimeErrors, logicalErrors);
   }
 
-  // ── Step 4: All test cases passed! ──
+  // ── Step 5: All test cases passed! ──
   score = adjustedPoints;
   errorType = "Accepted";
 
-  // Time bonus
-  let timeBonus = 0;
-  if (timeInfo && timeInfo.roundEndTime && timeInfo.roundStartTime) {
-    const totalDuration = timeInfo.roundEndTime - timeInfo.roundStartTime;
-    const timeRemaining = Math.max(0, timeInfo.roundEndTime - Date.now());
-    const timeRemainingFraction = timeRemaining / totalDuration;
-    timeBonus = Math.floor(timeRemainingFraction * 0.2 * adjustedPoints);
-    score += timeBonus;
-  }
-
-  if (timeBonus > 0) {
-    feedback.push(`All ${totalTests} test cases passed! Full score ${adjustedPoints} + ${timeBonus} time bonus = ${score}!`);
-  } else {
-    feedback.push(`All ${totalTests} test cases passed! Score: ${score} points.`);
-  }
+  feedback.push(`All ${totalTests} test cases passed! Score: ${score} points.`);
 
   return buildResult(score, errorType, feedback, language, langDeduction, totalTests, passedTests, syntaxErrors, runtimeErrors, logicalErrors);
 }

@@ -6,7 +6,8 @@ import { getUser } from "../services/auth";
  * FullscreenLockdown - Forces competitors into fullscreen during active rounds.
  * - Shows a blocking overlay requiring fullscreen entry
  * - Re-shows overlay if user exits fullscreen during round
- * - Tracks violations and reports to admin via socket
+ * - Tracks fullscreen violations and reports to admin via socket
+ * - Tab switching immediately kicks the user from the competition
  * - Blocks keyboard shortcuts and right-click
  * - Shows warning on page leave
  */
@@ -14,6 +15,7 @@ export default function FullscreenLockdown({ roundActive, children }) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
   const [violationCount, setViolationCount] = useState(0);
+  const [kicked, setKicked] = useState(false);
   const violationRef = useRef(0);
   const user = getUser();
   const roundActiveRef = useRef(roundActive);
@@ -73,14 +75,15 @@ export default function FullscreenLockdown({ roundActive, children }) {
     const handleFullscreenChange = () => {
       const fs = checkFullscreen();
       if (!fs && roundActiveRef.current) {
-        // User exited fullscreen during active round - VIOLATION
+        // User exited fullscreen during active round - FULLSCREEN VIOLATION
         setShowPrompt(true);
         violationRef.current += 1;
         setViolationCount(violationRef.current);
 
-        // Report violation to server
+        // Report fullscreen violation to server
         socket.emit("violation:fullscreen", {
           username: user.username,
+          type: "fullscreen_exit",
         });
       }
     };
@@ -143,14 +146,14 @@ export default function FullscreenLockdown({ roundActive, children }) {
       return e.returnValue;
     };
 
-    // Detect visibility change (tab switch)
+    // Detect visibility change (tab switch) — KICK USER IMMEDIATELY
     const handleVisibilityChange = () => {
       if (document.hidden && roundActiveRef.current) {
-        violationRef.current += 1;
-        setViolationCount(violationRef.current);
-        socket.emit("violation:fullscreen", {
+        // Tab switch detected — kick the user from the competition
+        socket.emit("violation:tab_switch", {
           username: user.username,
         });
+        setKicked(true);
       }
     };
 
@@ -159,11 +162,17 @@ export default function FullscreenLockdown({ roundActive, children }) {
     window.addEventListener("beforeunload", handleBeforeUnload);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
+    // Listen for server confirmation of kick
+    socket.on("user:kicked", () => {
+      setKicked(true);
+    });
+
     return () => {
       document.removeEventListener("keydown", handleKeyDown, true);
       document.removeEventListener("contextmenu", handleContextMenu);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      socket.off("user:kicked");
     };
   }, [roundActive, user.username]);
 
@@ -182,8 +191,40 @@ export default function FullscreenLockdown({ roundActive, children }) {
   }, [roundActive, checkFullscreen, exitFullscreen]);
 
   // If round is not active, just render children normally
-  if (!roundActive) {
+  if (!roundActive && !kicked) {
     return children;
+  }
+
+  // If kicked for tab switching, show removal screen
+  if (kicked) {
+    return (
+      <div style={styles.overlay}>
+        <div style={styles.promptBox}>
+          <div style={{ fontSize: "64px", marginBottom: "20px" }}>🚫</div>
+          <h1 style={{ ...styles.promptTitle, color: "#ff4444", fontSize: "22px" }}>
+            YOU ARE REMOVED FROM THE COMPETITION
+          </h1>
+          <p style={{ color: "#ff6666", fontSize: "14px", lineHeight: "1.8", marginBottom: "16px" }}>
+            Tab switching was detected during the active round.
+          </p>
+          <p style={{ color: "#666", fontSize: "12px", lineHeight: "1.8", marginBottom: "24px" }}>
+            This is a serious violation. You have been permanently removed from this competition.
+            Your submission has been disqualified.
+          </p>
+          <div style={{
+            background: "#ff444415",
+            border: "1px solid #ff444440",
+            padding: "12px 20px",
+            color: "#ff4444",
+            fontSize: "11px",
+            letterSpacing: "2px",
+            fontWeight: "bold",
+          }}>
+            ⛔ DISQUALIFIED — TAB SWITCH DETECTED
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // If in fullscreen, render children
@@ -191,10 +232,10 @@ export default function FullscreenLockdown({ roundActive, children }) {
     return (
       <>
         {children}
-        {/* Violation indicator */}
+        {/* Fullscreen violation indicator */}
         {violationCount > 0 && (
           <div style={styles.violationBadge}>
-            {violationCount} violation{violationCount > 1 ? "s" : ""}
+            🖥️ {violationCount} fullscreen violation{violationCount > 1 ? "s" : ""}
           </div>
         )}
       </>
@@ -219,7 +260,7 @@ export default function FullscreenLockdown({ roundActive, children }) {
           </p>
           {violationCount > 0 && (
             <div style={styles.violationWarning}>
-              ⚠ {violationCount} VIOLATION{violationCount > 1 ? "S" : ""} RECORDED
+              🖥️ {violationCount} FULLSCREEN VIOLATION{violationCount > 1 ? "S" : ""} RECORDED
             </div>
           )}
           <button onClick={enterFullscreen} style={styles.enterBtn}>

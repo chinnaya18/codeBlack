@@ -28,6 +28,7 @@ router.get("/state", authMiddleware, adminOnly, (req, res) => {
     removedUsers: [...gs.removedUsers],
     violations: gs.violations || {},
     problemAssignments: gs.problemAssignments || {},
+    tabKicked: gs.tabKicked || [],
   });
 });
 
@@ -166,6 +167,7 @@ router.post("/reset", authMiddleware, adminOnly, (req, res) => {
   gs.removedUsers.clear();
   gs.problemAssignments = {};
   gs.violations = {};
+  gs.tabKicked = [];
 
   for (const user of Object.values(gs.onlineUsers)) {
     user.points = { round1: 0, round2: 0 };

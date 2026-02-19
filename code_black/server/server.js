@@ -31,7 +31,8 @@ const gameState = {
   submissions: {},
   removedUsers: new Set(),
   problemAssignments: {},   // { username: { 1: problemIndex, 2: problemIndex } }
-  violations: {},           // { username: count } - fullscreen exit violations
+  violations: {},           // { username: { fullscreen: count, tabSwitch: count } }
+  tabKicked: [],            // [{ username, timestamp }] - users kicked for tab switching
 };
 
 const DISCONNECT_GRACE_MS = 60000; // 60 second grace period before removing user
@@ -176,18 +177,77 @@ io.on("connection", (socket) => {
   });
 
   // Track fullscreen violations
-  socket.on("violation:fullscreen", ({ username }) => {
+  socket.on("violation:fullscreen", ({ username, type }) => {
     if (!gameState.violations[username]) {
-      gameState.violations[username] = 0;
+      gameState.violations[username] = { fullscreen: 0, tabSwitch: 0 };
     }
-    gameState.violations[username]++;
-    console.log(`⚠ Fullscreen violation by ${username} (count: ${gameState.violations[username]})`);
+    // Handle legacy format (just a count) by converting
+    if (typeof gameState.violations[username] === "number") {
+      const oldCount = gameState.violations[username];
+      gameState.violations[username] = { fullscreen: oldCount, tabSwitch: 0 };
+    }
+    gameState.violations[username].fullscreen++;
+    const total = gameState.violations[username].fullscreen + gameState.violations[username].tabSwitch;
+    console.log(`🖥️ Fullscreen violation by ${username} (fullscreen: ${gameState.violations[username].fullscreen})`);
     // Notify admin
     io.emit("violation:update", {
       username,
-      count: gameState.violations[username],
+      count: total,
+      fullscreen: gameState.violations[username].fullscreen,
+      tabSwitch: gameState.violations[username].tabSwitch,
       type: "fullscreen_exit",
     });
+  });
+
+  // Tab switch — kick user immediately
+  socket.on("violation:tab_switch", ({ username }) => {
+    if (!gameState.violations[username]) {
+      gameState.violations[username] = { fullscreen: 0, tabSwitch: 0 };
+    }
+    if (typeof gameState.violations[username] === "number") {
+      const oldCount = gameState.violations[username];
+      gameState.violations[username] = { fullscreen: oldCount, tabSwitch: 0 };
+    }
+    gameState.violations[username].tabSwitch++;
+    console.log(`⛔ Tab switch by ${username} — KICKING FROM COMPETITION`);
+
+    // Add to removed users and track the kick
+    gameState.removedUsers.add(username);
+    gameState.tabKicked.push({ username, timestamp: Date.now() });
+
+    // Reset their scores to 0
+    if (gameState.onlineUsers[username]) {
+      gameState.onlineUsers[username].points = { round1: 0, round2: 0 };
+    }
+
+    // Notify the kicked user
+    const userData = gameState.onlineUsers[username];
+    if (userData && userData.socketId) {
+      io.to(userData.socketId).emit("user:kicked", { reason: "tab_switch" });
+    }
+
+    // Notify admin about the kick
+    io.emit("violation:update", {
+      username,
+      count: (gameState.violations[username].fullscreen || 0) + gameState.violations[username].tabSwitch,
+      fullscreen: gameState.violations[username].fullscreen || 0,
+      tabSwitch: gameState.violations[username].tabSwitch,
+      type: "tab_switch",
+      kicked: true,
+    });
+
+    io.emit("user:tab_kicked", {
+      username,
+      timestamp: Date.now(),
+    });
+
+    // Remove from online users and update leaderboard
+    if (gameState.onlineUsers[username]?.disconnectTimer) {
+      clearTimeout(gameState.onlineUsers[username].disconnectTimer);
+    }
+    delete gameState.onlineUsers[username];
+    io.emit("users:update", getOnlineCompetitors());
+    io.emit("leaderboard:update", getLeaderboard());
   });
 
   socket.on("disconnect", () => {
