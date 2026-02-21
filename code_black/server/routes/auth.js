@@ -1,15 +1,31 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const { db, doc, setDoc, getDoc } = require("../firebase");
 const router = express.Router();
 
-// ─── Dynamic User Store (in-memory) + admin account ─────────
-const USERS = {};
-// Admin is always available
-USERS.admin = { password: "admin123", role: "admin", hashed: false };
+// ─── Auto-Create Admin ──────────────────────────────────────
+const initAdmin = async () => {
+  try {
+    const adminRef = doc(db, "users", "admin");
+    const adminSnap = await getDoc(adminRef);
+
+    if (!adminSnap.exists()) {
+      await setDoc(adminRef, {
+        username: "admin",
+        password: "admin123", // No hash for admin simplicity
+        role: "admin"
+      });
+      console.log("🛠️ Default Admin account created in Firebase");
+    }
+  } catch (err) {
+    console.error("Failed to init admin:", err);
+  }
+};
+initAdmin();
 
 // ─── Register ───────────────────────────────────────────────
-router.post("/register", (req, res) => {
+router.post("/register", async (req, res) => {
   try {
     const { username, password } = req.body;
 
@@ -31,13 +47,22 @@ router.post("/register", (req, res) => {
       return res.status(400).json({ message: "This username is reserved" });
     }
 
-    if (USERS[trimmed]) {
+    const userRef = doc(db, "users", trimmed);
+    const userSnap = await getDoc(userRef);
+
+    if (userSnap.exists()) {
       return res.status(409).json({ message: "Username already exists. Please login instead." });
     }
 
     // Hash password and store
     const hashedPassword = bcrypt.hashSync(password, 10);
-    USERS[trimmed] = { password: hashedPassword, role: "competitor", hashed: true };
+    const newUser = {
+      username: trimmed,
+      password: hashedPassword,
+      role: "competitor"
+    };
+
+    await setDoc(userRef, newUser);
 
     const token = jwt.sign(
       { username: trimmed, role: "competitor" },
@@ -53,30 +78,34 @@ router.post("/register", (req, res) => {
 });
 
 // ─── Login ──────────────────────────────────────────────────
-router.post("/login", (req, res) => {
+router.post("/login", async (req, res) => {
   try {
     const { username, password } = req.body;
     const trimmed = (username || "").trim().toLowerCase();
-    const user = USERS[trimmed];
 
-    if (!user) {
+    const userRef = doc(db, "users", trimmed);
+    const userSnap = await getDoc(userRef);
+
+    if (!userSnap.exists()) {
       return res.status(401).json({ message: "User not found. Please register first." });
     }
 
+    const user = userSnap.data();
+
     // Compare password
     let passwordValid = false;
-    if (user.hashed) {
-      passwordValid = bcrypt.compareSync(password, user.password);
-    } else {
+    if (user.role === "admin") {
       // Plain text (admin account)
       passwordValid = (user.password === password);
+    } else {
+      passwordValid = bcrypt.compareSync(password, user.password);
     }
 
     if (!passwordValid) {
       return res.status(401).json({ message: "Invalid password" });
     }
 
-    if (req.gameState.removedUsers.has(trimmed)) {
+    if (req.gameState && req.gameState.removedUsers && req.gameState.removedUsers.has(trimmed)) {
       return res
         .status(403)
         .json({ message: "You have been removed from the event" });
@@ -96,3 +125,4 @@ router.post("/login", (req, res) => {
 });
 
 module.exports = router;
+

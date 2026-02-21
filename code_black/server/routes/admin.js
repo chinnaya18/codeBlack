@@ -210,4 +210,76 @@ router.post("/revoke-kick", authMiddleware, adminOnly, (req, res) => {
   res.json({ success: true, message: `Kick decision revoked for ${username}` });
 });
 
+// Get all submissions for reviewing code later
+router.get("/submissions", authMiddleware, adminOnly, (req, res) => {
+  const gs = req.gameState;
+  // Return an array of all submissions mapped with username
+  const subs = Object.entries(gs.submissions).map(([key, data]) => {
+    const parts = key.split("_round");
+    return {
+      username: parts[0],
+      round: parseInt(parts[1], 10),
+      ...data
+    };
+  });
+  res.json({ submissions: subs });
+});
+
+// Evaluate all pending submissions in parallel!
+router.post("/evaluate-all", authMiddleware, adminOnly, async (req, res) => {
+  const gs = req.gameState;
+  const { getLLMScore } = require("../services/llmScoringService");
+  const getLeaderboard = req.app.get("getLeaderboard");
+
+  const pendingKeys = Object.keys(gs.submissions).filter(k => gs.submissions[k].status === "pending");
+
+  if (pendingKeys.length === 0) {
+    return res.json({ message: "No pending submissions to evaluate", count: 0 });
+  }
+
+  // We map the pending submissions to parallel promises
+  const promises = pendingKeys.map(async (key) => {
+    const sub = gs.submissions[key];
+    const parts = key.split("_round");
+    const username = parts[0];
+    const round = parseInt(parts[1], 10);
+
+    // Find problem definition based on what the user was solving when they submitted
+    const problemPool = problems[round];
+    const assignmentIdx = sub.problemIdx ?? 0;
+    const problem = problemPool?.[assignmentIdx];
+
+    if (!problem) {
+      sub.status = "error";
+      return;
+    }
+
+    try {
+      const scoring = await getLLMScore(sub.code, sub.language, problem);
+      sub.result = scoring;
+      sub.status = "evaluated";
+
+      const roundKey = `round${round}`;
+      if (gs.onlineUsers[username]) {
+        gs.onlineUsers[username].points[roundKey] += scoring.score;
+      }
+    } catch (err) {
+      console.error(`Error evaluating ${username}:`, err);
+      sub.status = "error";
+    }
+  });
+
+  try {
+    // Run them all in parallel!
+    await Promise.all(promises);
+
+    // Broadcast the updated leaderboard with the new scores
+    req.io.emit("leaderboard:update", getLeaderboard());
+
+    res.json({ success: true, count: pendingKeys.length, message: `Evaluated ${pendingKeys.length} submissions in parallel.` });
+  } catch (err) {
+    res.status(500).json({ message: "Evaluation encountered errors", error: err.message });
+  }
+});
+
 module.exports = router;

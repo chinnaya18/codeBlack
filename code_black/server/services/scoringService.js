@@ -73,7 +73,9 @@ function calculateScore(basePoints, aiResult, timeInfo = null, language = "pytho
   // Compilation / Syntax errors
   if (aiResult.compilation_error || aiResult.syntax_error) {
     const syntaxPenalty = syntaxErrors * ERROR_PENALTIES.syntax;
-    score = Math.max(0, adjustedPoints - syntaxPenalty);
+    const testsRatio = totalTests > 0 ? passedTests / totalTests : 0;
+    const earnedPoints = adjustedPoints * testsRatio;
+    score = Math.floor(Math.max(0, earnedPoints - syntaxPenalty));
     errorType = aiResult.compilation_error ? "Compilation Error" : "Syntax Error";
 
     feedback.push(`${syntaxErrors} syntax error(s) detected → -${syntaxPenalty} pts (${syntaxErrors} × ${ERROR_PENALTIES.syntax})`);
@@ -91,7 +93,9 @@ function calculateScore(basePoints, aiResult, timeInfo = null, language = "pytho
   // Runtime errors
   if (aiResult.runtime_error) {
     const runtimePenalty = runtimeErrors * ERROR_PENALTIES.runtime;
-    score = Math.max(0, adjustedPoints - runtimePenalty);
+    const testsRatio = totalTests > 0 ? passedTests / totalTests : 0;
+    const earnedPoints = adjustedPoints * testsRatio;
+    score = Math.floor(Math.max(0, earnedPoints - runtimePenalty));
     errorType = "Runtime Error";
 
     feedback.push(`${runtimeErrors} runtime error(s) detected → -${runtimePenalty} pts (${runtimeErrors} × ${ERROR_PENALTIES.runtime})`);
@@ -158,7 +162,9 @@ function calculateScore(basePoints, aiResult, timeInfo = null, language = "pytho
     // Strict rounds apply heavier logical penalties
     const penaltyMultiplier = isStrictRound ? 1.5 : 1;
     const logicalPenalty = Math.round(logicalErrors * ERROR_PENALTIES.logical * penaltyMultiplier);
-    score = Math.max(0, adjustedPoints - logicalPenalty);
+    const testsRatio = totalTests > 0 ? passedTests / totalTests : 0;
+    const earnedPoints = adjustedPoints * testsRatio;
+    score = Math.floor(Math.max(0, earnedPoints - logicalPenalty));
     errorType = "Wrong Answer";
 
     feedback.push(`${passedTests}/${totalTests} test cases passed.`);

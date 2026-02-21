@@ -2,19 +2,34 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { socket, registerUser } from "../socket/leaderboard";
 import { getUser } from "../services/auth";
+import { fetchWithAuth } from "../services/api";
 import ProfileDropdown from "../components/ProfileDropdown";
 
 export default function Leaderboard() {
   const navigate = useNavigate();
   const user = getUser();
   const [leaderboard, setLeaderboard] = useState([]);
+  const [mySubmissions, setMySubmissions] = useState([]);
+  const [viewedCode, setViewedCode] = useState(null);
+
+  const fetchMySubmissions = async () => {
+    try {
+      const data = await fetchWithAuth("/submit/my-submissions");
+      setMySubmissions(data.submissions || []);
+    } catch (err) {
+      console.error("Failed to fetch my submissions:", err);
+    }
+  };
 
   useEffect(() => {
     registerUser(user.username, user.role);
 
     socket.on("leaderboard:update", (data) => {
       setLeaderboard(data);
+      fetchMySubmissions();
     });
+
+    fetchMySubmissions();
 
     socket.on("user:removed", () => {
       localStorage.clear();
@@ -158,7 +173,67 @@ export default function Leaderboard() {
             ))
           )}
         </div>
+
+        {/* ─── My Submissions Viewer ─── */}
+        {mySubmissions.length > 0 && (
+          <div style={{ ...styles.tableWrapper, marginTop: "40px" }}>
+            <h3 style={{ color: "#00ff99", fontSize: "12px", letterSpacing: "3px", marginBottom: "16px", textAlign: "center" }}>MY SUBMISSIONS & FEEDBACK</h3>
+            <div style={styles.tableHeader}>
+              <span style={{ ...styles.headerCell, width: "80px" }}>ROUND</span>
+              <span style={{ ...styles.headerCell, flex: 1, textAlign: "left" }}>STATUS</span>
+              <span style={{ ...styles.headerCell, width: "120px" }}>SCORE</span>
+              <span style={{ ...styles.headerCell, width: "120px" }}>ACTION</span>
+            </div>
+            {mySubmissions.map((sub, idx) => (
+              <div key={`mysub-${idx}`} style={styles.row}>
+                <span style={{ ...styles.cell, width: "80px", color: "#ccc" }}>R{sub.round}</span>
+                <span style={{ ...styles.cell, flex: 1, textAlign: "left", color: sub.status === "pending" ? "#ff9900" : "#00ff99" }}>
+                  {sub.status === "pending" ? "⏳ AWAITING EVALUATION" : "✅ EVALUATED"}
+                </span>
+                <span style={{ ...styles.cell, width: "120px", color: "#00ff99", fontWeight: "bold" }}>
+                  {sub.status !== "pending" ? `${sub.result?.score || 0} PTS` : "—"}
+                </span>
+                <span style={{ ...styles.cell, width: "120px" }}>
+                  <button onClick={() => setViewedCode(sub)} style={styles.viewBtn}>VIEW DETAILS</button>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Code View Modal */}
+      {viewedCode && (
+        <div style={styles.modalOverlay} onClick={() => setViewedCode(null)}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h3 style={{ margin: 0, color: "#00ff99", letterSpacing: "2px", fontWeight: "bold" }}>
+                MY ROUND {viewedCode.round} SUBMISSION
+              </h3>
+              <button onClick={() => setViewedCode(null)} style={styles.closeBtn}>✕</button>
+            </div>
+
+            <div style={{ padding: "20px", background: "#050505", border: "1px solid #222" }}>
+              {viewedCode.status === "pending" ? (
+                <div style={{ color: "#ff9900", fontSize: "12px", letterSpacing: "1px", fontWeight: "bold" }}>⚠️ PENDING AI EVALUATION. CHECK BACK ONCE THE ADMIN HAS EVALUATED.</div>
+              ) : (
+                <div>
+                  <div style={{ color: "#00ff99", fontSize: "16px", fontWeight: "bold", marginBottom: "8px" }}>SCORE: {viewedCode.result?.score || 0} / 100 PTS</div>
+                  <div style={{ color: "#888", fontSize: "12px", lineHeight: "1.6" }}>
+                    {viewedCode.result?.feedback?.map((f, i) => <div key={i}>• {f}</div>)}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ padding: "20px", flex: 1, overflow: "auto" }}>
+              <pre style={{ margin: 0, color: "#ccc", fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", whiteSpace: "pre-wrap" }}>
+                {viewedCode.code}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -239,4 +314,52 @@ const styles = {
     fontSize: "14px",
     letterSpacing: "2px",
   },
+  viewBtn: {
+    background: "#00ff9915",
+    border: "1px solid #00ff9940",
+    color: "#00ff99",
+    padding: "6px 14px",
+    cursor: "pointer",
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: "9px",
+    letterSpacing: "1px",
+    fontWeight: "bold",
+    transition: "all 0.3s",
+  },
+  modalOverlay: {
+    position: "fixed",
+    top: 0,
+    left: 0, right: 0, bottom: 0,
+    background: "rgba(0,0,0,0.8)",
+    zIndex: 3000,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "20px"
+  },
+  modalContent: {
+    width: "100%",
+    maxWidth: "800px",
+    background: "#0a0a0a",
+    border: "1px solid #222",
+    display: "flex",
+    flexDirection: "column",
+    maxHeight: "90vh",
+    boxShadow: "0 0 40px rgba(0,0,0,0.5)"
+  },
+  modalHeader: {
+    padding: "20px",
+    borderBottom: "1px solid #222",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    background: "#080808"
+  },
+  closeBtn: {
+    background: "none",
+    border: "none",
+    color: "#fff",
+    fontSize: "18px",
+    cursor: "pointer"
+  }
 };

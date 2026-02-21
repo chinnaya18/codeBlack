@@ -1,9 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const authMiddleware = require("../middleware/auth");
-const { evaluateCode, healthCheck } = require("../services/aiService");
-const { runCode } = require("../services/codeRunner");
-const { calculateScore } = require("../services/scoringService");
+const { getLLMScore } = require("../services/llmScoringService");
 const problems = require("../data/problems");
 
 router.post("/", authMiddleware, async (req, res) => {
@@ -34,20 +32,17 @@ router.post("/", authMiddleware, async (req, res) => {
     return res.status(400).json({ message: "Invalid round" });
   }
 
-  // Check if already submitted for this round
-  const submissionKey = `${username}_round${round}`;
-  if (gs.submissions[submissionKey]) {
+  // Check if already submitted for THIS specific question in the round
+  const assignmentIdx = gs.problemAssignments?.[username]?.[round] || 0;
+  const submissionKey = `${username}_round${round}_q${assignmentIdx}`;
+
+  if (gs.submissions[submissionKey] && gs.submissions[submissionKey].status !== "error") {
     return res
       .status(400)
-      .json({ message: "Already submitted for this round" });
+      .json({ message: "Already submitted this question" });
   }
 
   // Get the user's assigned problem
-  const assignmentIdx = gs.problemAssignments?.[username]?.[round];
-  if (assignmentIdx === undefined || assignmentIdx === null) {
-    return res.status(400).json({ message: "No problem assigned to you for this round" });
-  }
-
   const problemPool = problems[round];
   if (!problemPool || !problemPool[assignmentIdx]) {
     return res.status(400).json({ message: "Problem not found" });
@@ -56,127 +51,61 @@ router.post("/", authMiddleware, async (req, res) => {
   const problem = problemPool[assignmentIdx];
 
   try {
-    let aiResult = null;
+    console.log(`[SUBMIT] Code submitted by ${username} and marked as pending`);
 
-    // ── Try AI Service first (preferred) ──
-    try {
-      const health = await healthCheck();
-      if (health && health.status === "ok") {
-        console.log(`[SUBMIT] Using AI service for ${language} evaluation`);
-        aiResult = await evaluateCode(
-          code,
-          language,
-          problem.testCases,
-          problem.timeLimit || 5000
-        );
-      }
-    } catch (aiErr) {
-      console.warn("[SUBMIT] AI service unavailable, using local runner:", aiErr.message);
-    }
-
-    // ── Fallback: local code runner if AI service is down ──
-    if (!aiResult) {
-      console.log(`[SUBMIT] Falling back to local runner for ${language}`);
-      aiResult = await runLocally(code, language, problem);
-    }
-
-    // ── Calculate score using AI result ──
-    const timeInfo = {
-      roundStartTime: gs.roundStartTime,
-      roundEndTime: gs.roundEndTime,
-    };
-
-    const scoring = calculateScore(problem.points, aiResult, timeInfo, language, round);
-
-    // Store submission
+    // Store submission as pending
     gs.submissions[submissionKey] = {
       code,
       language,
       problemId: problem.id,
-      result: scoring,
+      problemIdx: assignmentIdx,
       timestamp: Date.now(),
+      status: "pending"
     };
 
-    // Update user points
-    const roundKey = `round${round}`;
-    if (gs.onlineUsers[username]) {
-      gs.onlineUsers[username].points[roundKey] = scoring.score;
+    // Check if there's a next question in this round
+    if (assignmentIdx + 1 < problemPool.length) {
+      gs.problemAssignments[username][round] = assignmentIdx + 1;
+      const getUserProblem = req.app.get("getUserProblem");
+      const nextProblem = getUserProblem(username, round);
+
+      const userData = gs.onlineUsers[username];
+      if (userData && userData.socketId) {
+        req.io.to(userData.socketId).emit("problem:assigned", { round, problem: nextProblem });
+      }
+
+      return res.json({
+        success: true,
+        pending: true,
+        hasNext: true,
+        message: "Question 1 submitted. Loading Question 2..."
+      });
     }
 
-    // Broadcast leaderboard update
-    const getLeaderboard = req.app.get("getLeaderboard");
-    req.io.emit("leaderboard:update", getLeaderboard());
-
-    res.json({ success: true, ...scoring });
+    res.json({ success: true, pending: true, hasNext: false, message: "Round finished. Awaiting AI evaluation." });
   } catch (err) {
     console.error("Submission error:", err);
-    res.status(500).json({ message: "Evaluation failed", error: err.message });
+    res.status(500).json({ message: "Submission failed", error: err.message });
   }
 });
 
-/**
- * Fallback: run code locally when AI service is unavailable.
- * Produces the same result shape as the AI service.
- */
-async function runLocally(code, language, problem) {
-  const result = {
-    compilation_error: false,
-    syntax_error: false,
-    runtime_error: false,
-    timed_out: false,
-    syntax_error_count: 0,
-    runtime_error_count: 0,
-    logical_error_count: 0,
-    error_details: "",
-    test_results: [],
-  };
+// Endpoint for users to get their own submissions to view code and feedback
+router.get("/my-submissions", authMiddleware, (req, res) => {
+  const { username } = req.user;
+  const gs = req.gameState;
 
-  for (const tc of problem.testCases) {
-    const run = await runCode(language, code, tc.input, problem.timeLimit || 5000);
-
-    if (run.compilationError) {
-      result.compilation_error = true;
-      result.syntax_error = true;
-      result.syntax_error_count = countErrors(run.stderr);
-      result.error_details = run.stderr;
-      break;
+  const mySubs = [];
+  Object.keys(gs.submissions).forEach(key => {
+    if (key.startsWith(`${username}_round`)) {
+      const round = parseInt(key.split("_round")[1], 10);
+      mySubs.push({
+        round,
+        ...gs.submissions[key]
+      });
     }
+  });
 
-    if (run.timedOut) {
-      result.timed_out = true;
-      break;
-    }
-
-    if (run.exitCode !== 0 && run.stderr) {
-      const isSyntax = /SyntaxError|IndentationError|error:.*expected/i.test(run.stderr);
-      if (isSyntax) {
-        result.syntax_error = true;
-        result.syntax_error_count = countErrors(run.stderr);
-        result.error_details = run.stderr;
-        break;
-      } else {
-        result.runtime_error = true;
-        result.runtime_error_count = 1;
-        result.error_details = run.stderr;
-        break;
-      }
-    }
-
-    const actual = run.stdout.replace(/\r\n/g, "\n").trim();
-    const expected = tc.expected.replace(/\r\n/g, "\n").trim();
-    result.test_results.push({ passed: actual === expected, expected, actual });
-  }
-
-  // Count logical errors
-  result.logical_error_count = result.test_results.filter(t => !t.passed).length;
-
-  return result;
-}
-
-function countErrors(stderr) {
-  if (!stderr) return 1;
-  const errorLines = stderr.split("\n").filter(l => /error/i.test(l));
-  return Math.max(1, errorLines.length);
-}
+  res.json({ submissions: mySubs });
+});
 
 module.exports = router;

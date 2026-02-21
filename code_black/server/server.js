@@ -94,9 +94,9 @@ function assignProblem(username, roundNum) {
   }
   const pool = problems[roundNum];
   if (!pool || pool.length === 0) return null;
-  const randomIndex = Math.floor(Math.random() * pool.length);
-  gameState.problemAssignments[username][roundNum] = randomIndex;
-  return randomIndex;
+  const startIndex = 0; // Always start at the first problem sequentially
+  gameState.problemAssignments[username][roundNum] = startIndex;
+  return startIndex;
 }
 
 /**
@@ -152,6 +152,11 @@ io.on("connection", (socket) => {
       gameState.onlineUsers[username].connected = true;
     }
 
+    // Initialize violations if not present
+    if (role === "competitor" && !gameState.violations[username]) {
+      gameState.violations[username] = { fullscreen: 0, tabSwitch: 0 };
+    }
+
     // If there's an active round, assign a problem to this user (if not already assigned)
     let problem = null;
     if (gameState.currentRound > 0 && role === "competitor") {
@@ -159,12 +164,10 @@ io.on("connection", (socket) => {
         assignProblem(username, gameState.currentRound);
         problem = getUserProblem(username, gameState.currentRound);
       } else if (gameState.roundStatus === "ended") {
-        // Round ended, show their assigned problem if any
         problem = getUserProblem(username, gameState.currentRound);
       }
     }
 
-    // Send current state to newly connected user (with their specific problem)
     socket.emit("state:sync", {
       currentRound: gameState.currentRound,
       roundStatus: gameState.roundStatus,
@@ -174,64 +177,53 @@ io.on("connection", (socket) => {
 
     io.emit("users:update", getOnlineCompetitors());
     io.emit("leaderboard:update", getLeaderboard());
+    console.log(`👤 User registered: ${username} (${role})`);
   });
 
   // Track fullscreen violations
-  socket.on("violation:fullscreen", ({ username, type }) => {
-    if (!gameState.violations[username]) {
-      gameState.violations[username] = { fullscreen: 0, tabSwitch: 0 };
-    }
-    // Handle legacy format (just a count) by converting
-    if (typeof gameState.violations[username] === "number") {
-      const oldCount = gameState.violations[username];
-      gameState.violations[username] = { fullscreen: oldCount, tabSwitch: 0 };
-    }
-    gameState.violations[username].fullscreen++;
-    const total = gameState.violations[username].fullscreen + gameState.violations[username].tabSwitch;
-    console.log(`🖥️ Fullscreen violation by ${username} (fullscreen: ${gameState.violations[username].fullscreen})`);
-    // Notify admin
+  socket.on("violation:fullscreen", ({ username }) => {
+    const v = gameState.violations[username];
+    if (!v) return;
+
+    v.fullscreen++;
+    const total = v.fullscreen + v.tabSwitch;
+
+    console.log(`🖥️ [VIOLATION] Fullscreen exit by ${username} (count: ${v.fullscreen})`);
+
     io.emit("violation:update", {
       username,
       count: total,
-      fullscreen: gameState.violations[username].fullscreen,
-      tabSwitch: gameState.violations[username].tabSwitch,
+      fullscreen: v.fullscreen,
+      tabSwitch: v.tabSwitch,
       type: "fullscreen_exit",
     });
   });
 
   // Tab switch — kick user immediately
   socket.on("violation:tab_switch", ({ username }) => {
-    if (!gameState.violations[username]) {
-      gameState.violations[username] = { fullscreen: 0, tabSwitch: 0 };
-    }
-    if (typeof gameState.violations[username] === "number") {
-      const oldCount = gameState.violations[username];
-      gameState.violations[username] = { fullscreen: oldCount, tabSwitch: 0 };
-    }
-    gameState.violations[username].tabSwitch++;
-    console.log(`⛔ Tab switch by ${username} — KICKING FROM COMPETITION`);
+    const v = gameState.violations[username];
+    if (!v) return;
 
-    // Add to removed users and track the kick
+    v.tabSwitch++;
+    console.log(`⛔ [KICK] Tab switch by ${username} — Removing from competition`);
+
     gameState.removedUsers.add(username);
     gameState.tabKicked.push({ username, timestamp: Date.now() });
 
-    // Reset their scores to 0
     if (gameState.onlineUsers[username]) {
       gameState.onlineUsers[username].points = { round1: 0, round2: 0 };
     }
 
-    // Notify the kicked user
     const userData = gameState.onlineUsers[username];
     if (userData && userData.socketId) {
       io.to(userData.socketId).emit("user:kicked", { reason: "tab_switch" });
     }
 
-    // Notify admin about the kick
     io.emit("violation:update", {
       username,
-      count: (gameState.violations[username].fullscreen || 0) + gameState.violations[username].tabSwitch,
-      fullscreen: gameState.violations[username].fullscreen || 0,
-      tabSwitch: gameState.violations[username].tabSwitch,
+      count: v.fullscreen + v.tabSwitch,
+      fullscreen: v.fullscreen,
+      tabSwitch: v.tabSwitch,
       type: "tab_switch",
       kicked: true,
     });

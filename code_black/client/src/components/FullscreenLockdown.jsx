@@ -18,6 +18,7 @@ export default function FullscreenLockdown({ roundActive, children }) {
   const [kicked, setKicked] = useState(false);
   const violationRef = useRef(0);
   const kickedRef = useRef(false);
+  const tabSwitchCountRef = useRef(0);
   const user = getUser();
   const roundActiveRef = useRef(roundActive);
   roundActiveRef.current = roundActive;
@@ -147,15 +148,23 @@ export default function FullscreenLockdown({ roundActive, children }) {
       return e.returnValue;
     };
 
-    // Detect visibility change (tab switch) — KICK USER IMMEDIATELY (only once)
+    // Detect visibility change (tab switch) — Kick on SECOND offense
     const handleVisibilityChange = () => {
       if (document.hidden && roundActiveRef.current && !kickedRef.current) {
-        // Tab switch detected — kick the user from the competition
-        kickedRef.current = true;
-        socket.emit("violation:tab_switch", {
-          username: user.username,
-        });
-        setKicked(true);
+        tabSwitchCountRef.current += 1;
+
+        if (tabSwitchCountRef.current === 1) {
+          // Send a stern warning!
+          alert("⚠️ TAB SWITCH WARNING ⚠️\n\nThis is your ONLY warning. Do not switch tabs or minimize the browser window. Doing it again will instantly disqualify you from the competition.");
+          // We can optionally report this warning to the admin dashboard by tracking it as a fullscreen violation or custom event, but user said "avoid violations" so a warning is perfect.
+        } else if (tabSwitchCountRef.current >= 2) {
+          // Tab switch detected again — kick the user from the competition
+          kickedRef.current = true;
+          socket.emit("violation:tab_switch", {
+            username: user.username,
+          });
+          setKicked(true);
+        }
       }
     };
 

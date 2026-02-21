@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 export default function LogoTopLeft() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const location = useLocation();
 
   useEffect(() => {
     const handleResize = () => {
@@ -14,6 +16,9 @@ export default function LogoTopLeft() {
   const logoSize = isMobile ? 36 : 48;
   const topPadding = isMobile ? 16 : 20;
   const leftPadding = isMobile ? 16 : 20;
+
+  const hideLogoRoutes = ["/arena", "/leaderboard", "/admin", "/admin/leaderboard"];
+  if (hideLogoRoutes.includes(location.pathname)) return null;
 
   return (
     <div style={{ ...styles.wrapper, top: topPadding, left: leftPadding }}>

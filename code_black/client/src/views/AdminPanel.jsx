@@ -20,6 +20,8 @@ export default function AdminPanel() {
   });
   const [loading, setLoading] = useState({});
   const [message, setMessage] = useState("");
+  const [submissions, setSubmissions] = useState([]);
+  const [viewedCode, setViewedCode] = useState(null);
 
   useEffect(() => {
     if (user.role !== "admin") {
@@ -65,6 +67,10 @@ export default function AdminPanel() {
     try {
       const data = await fetchWithAuth("/admin/state");
       setGameState(data);
+
+      // Also fetch submissions
+      const subData = await fetchWithAuth("/admin/submissions");
+      if (subData.submissions) setSubmissions(subData.submissions);
     } catch (err) {
       console.error("Failed to fetch state:", err);
     }
@@ -141,6 +147,19 @@ export default function AdminPanel() {
       fetchState();
     } catch (err) {
       showMessage(`Error: ${err.message}`);
+    }
+  };
+
+  const evaluateAll = async () => {
+    setLoading((prev) => ({ ...prev, evaluate: true }));
+    try {
+      const res = await fetchWithAuth("/admin/evaluate-all", { method: "POST" });
+      showMessage(res.message);
+      fetchState();
+    } catch (err) {
+      showMessage(`Error: ${err.message}`);
+    } finally {
+      setLoading((prev) => ({ ...prev, evaluate: false }));
     }
   };
 
@@ -235,7 +254,7 @@ export default function AdminPanel() {
                 ...styles.greenBtn,
                 opacity:
                   gameState.roundStatus === "active" ||
-                  gameState.currentRound < 1
+                    gameState.currentRound < 1
                     ? 0.3
                     : 1,
               }}
@@ -258,6 +277,12 @@ export default function AdminPanel() {
               style={{ ...styles.controlBtn, ...styles.redBtn }}
             >
               ⟲ RESET EVENT
+            </button>
+            <button
+              onClick={evaluateAll}
+              style={{ ...styles.controlBtn, ...styles.blueBtn }}
+            >
+              {loading.evaluate ? "EVALUATING..." : "🧠 EVALUATE ALL PENING SUBMISSIONS"}
             </button>
           </div>
         </div>
@@ -352,6 +377,65 @@ export default function AdminPanel() {
           </div>
         </div>
 
+        {/* ─── Submissions Panel ─── */}
+        <div style={styles.section}>
+          <h3 style={styles.sectionTitle}>SUBMISSIONS ({submissions.length})</h3>
+          <div style={styles.list}>
+            {submissions.length === 0 ? (
+              <p style={styles.emptyText}>No submissions</p>
+            ) : (
+              submissions.map((sub, idx) => (
+                <div key={idx} style={styles.userRow}>
+                  <div style={styles.userInfo}>
+                    <span style={{ ...styles.userDot, background: sub.status === "pending" ? "#ff9900" : "#00ff99", boxShadow: sub.status === "pending" ? "0 0 8px #ff9900" : "0 0 8px #00ff99" }} />
+                    <span style={styles.userName}>{sub.username} (R{sub.round})</span>
+                    <span style={{ color: "#888", fontSize: "10px", marginLeft: "10px" }}>Lang: {sub.language} | {sub.status !== "pending" ? `${sub.result?.score || 0} pts` : "PENDING"}</span>
+                  </div>
+                  <button
+                    onClick={() => setViewedCode(sub)}
+                    style={styles.revokeBtn}
+                  >
+                    VIEW CODE
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Code View Modal */}
+        {viewedCode && (
+          <div style={styles.modalOverlay} onClick={() => setViewedCode(null)}>
+            <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+              <div style={styles.modalHeader}>
+                <h3 style={{ margin: 0, color: "#00ff99", letterSpacing: "2px", fontWeight: "bold" }}>
+                  {viewedCode.username.toUpperCase()}'S CODE (ROUND {viewedCode.round})
+                </h3>
+                <button onClick={() => setViewedCode(null)} style={styles.closeBtn}>✕</button>
+              </div>
+
+              <div style={{ padding: "20px", background: "#050505", borderBottom: "1px solid #222" }}>
+                {viewedCode.status === "pending" ? (
+                  <div style={{ color: "#ff9900", fontSize: "12px", letterSpacing: "1px", fontWeight: "bold" }}>⚠️ PENDING AI EVALUATION (NO SCORE YET)</div>
+                ) : (
+                  <div>
+                    <div style={{ color: "#00ff99", fontSize: "16px", fontWeight: "bold", marginBottom: "8px" }}>SCORE: {viewedCode.result?.score || 0} / 100 PTS</div>
+                    <div style={{ color: "#888", fontSize: "10px", lineHeight: "1.6" }}>
+                      {viewedCode.result?.feedback?.map((f, i) => <div key={i}>{f}</div>)}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ padding: "20px", flex: 1, overflow: "auto" }}>
+                <pre style={{ margin: 0, color: "#ccc", fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", whiteSpace: "pre-wrap" }}>
+                  {viewedCode.code}
+                </pre>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ─── Disqualified Users (Tab Switch Kicks) ─── */}
         {(gameState.tabKicked?.length > 0 || gameState.removedUsers?.length > 0) && (
           <div style={{ ...styles.section, border: "1px solid #ff444430" }}>
@@ -394,7 +478,7 @@ export default function AdminPanel() {
                   </div>
                 </div>
               ))}
-              {(gameState.removedUsers || []).filter(u => 
+              {(gameState.removedUsers || []).filter(u =>
                 !(gameState.tabKicked || []).some(k => k.username === u)
               ).map((u) => (
                 <div key={`removed-${u}`} style={{
@@ -634,4 +718,44 @@ const styles = {
     transition: "all 0.3s",
     textAlign: "center",
   },
+  blueBtn: {
+    background: "linear-gradient(135deg, #00d2ff, #3a7bd5)",
+    color: "#000",
+  },
+  modalOverlay: {
+    position: "fixed",
+    top: 0,
+    left: 0, right: 0, bottom: 0,
+    background: "rgba(0,0,0,0.8)",
+    zIndex: 3000,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "20px"
+  },
+  modalContent: {
+    width: "100%",
+    maxWidth: "800px",
+    background: "#0a0a0a",
+    border: "1px solid #222",
+    display: "flex",
+    flexDirection: "column",
+    maxHeight: "90vh",
+    boxShadow: "0 0 40px rgba(0,0,0,0.5)"
+  },
+  modalHeader: {
+    padding: "20px",
+    borderBottom: "1px solid #222",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    background: "#080808"
+  },
+  closeBtn: {
+    background: "none",
+    border: "none",
+    color: "#fff",
+    fontSize: "18px",
+    cursor: "pointer"
+  }
 };
