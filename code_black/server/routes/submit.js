@@ -10,7 +10,7 @@ router.post("/", authMiddleware, async (req, res) => {
   const gs = req.gameState;
 
   // Validate language
-  const supportedLanguages = ["python", "javascript", "c", "java"];
+  const supportedLanguages = ["python", "javascript", "c", "java", "cpp"];
   if (!supportedLanguages.includes(language)) {
     return res.status(400).json({ message: "Unsupported language: " + language });
   }

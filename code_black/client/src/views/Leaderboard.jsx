@@ -100,6 +100,7 @@ export default function Leaderboard() {
             leaderboard.map((entry, idx) => (
               <div
                 key={entry.username}
+                className="lb-row"
                 style={{
                   ...styles.row,
                   animationDelay: `${idx * 0.08}s`,
@@ -168,6 +169,11 @@ export default function Leaderboard() {
                   }}
                 >
                   {entry.total}
+                  {entry.violationPenalty > 0 && (
+                    <span style={{ color: "#ff4444", fontSize: "10px", display: "block", textShadow: "none", fontWeight: "normal", marginTop: "4px" }}>
+                      (-{entry.violationPenalty} PTS)
+                    </span>
+                  )}
                 </span>
               </div>
             ))
@@ -176,8 +182,8 @@ export default function Leaderboard() {
 
         {/* ─── My Submissions Viewer ─── */}
         {mySubmissions.length > 0 && (
-          <div style={{ ...styles.tableWrapper, marginTop: "40px" }}>
-            <h3 style={{ color: "#00ff99", fontSize: "12px", letterSpacing: "3px", marginBottom: "16px", textAlign: "center" }}>MY SUBMISSIONS & FEEDBACK</h3>
+          <div style={styles.tableWrapper}>
+            <h3 style={{ color: "#00ff99", fontSize: "12px", letterSpacing: "3px", margin: "24px 0 16px 0", textAlign: "center" }}>MY SUBMISSIONS & FEEDBACK</h3>
             <div style={styles.tableHeader}>
               <span style={{ ...styles.headerCell, width: "80px" }}>ROUND</span>
               <span style={{ ...styles.headerCell, flex: 1, textAlign: "left" }}>STATUS</span>
@@ -185,7 +191,7 @@ export default function Leaderboard() {
               <span style={{ ...styles.headerCell, width: "120px" }}>ACTION</span>
             </div>
             {mySubmissions.map((sub, idx) => (
-              <div key={`mysub-${idx}`} style={styles.row}>
+              <div key={`mysub-${idx}`} className="lb-row" style={styles.row}>
                 <span style={{ ...styles.cell, width: "80px", color: "#ccc" }}>R{sub.round}</span>
                 <span style={{ ...styles.cell, flex: 1, textAlign: "left", color: sub.status === "pending" ? "#ff9900" : "#00ff99" }}>
                   {sub.status === "pending" ? "⏳ AWAITING EVALUATION" : "✅ EVALUATED"}
@@ -234,6 +240,20 @@ export default function Leaderboard() {
           </div>
         </div>
       )}
+
+      <style>{`
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateY(15px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .lb-row {
+          cursor: crosshair;
+        }
+        .lb-row:hover {
+          background: rgba(0, 255, 153, 0.03) !important;
+          border-left: 3px solid #00ff99 !important;
+        }
+      `}</style>
     </div>
   );
 }
@@ -270,32 +290,42 @@ const styles = {
   content: {
     flex: 1,
     display: "flex",
-    justifyContent: "center",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "40px",
     padding: "40px 20px",
     overflow: "auto",
   },
   tableWrapper: {
     width: "100%",
     maxWidth: "850px",
+    background: "#0a0a0a",
+    border: "1px solid #1a1a1a",
+    borderRadius: "8px",
+    padding: "0",
+    overflow: "hidden",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
   },
   tableHeader: {
     display: "flex",
-    padding: "14px 20px",
-    borderBottom: "1px solid #1a3a2a",
-    color: "#444",
-    fontSize: "9px",
-    letterSpacing: "2px",
+    padding: "16px 20px",
+    borderBottom: "1px solid #1a1a1a",
+    background: "#050505",
+    color: "#555",
+    fontSize: "10px",
+    letterSpacing: "3px",
+    fontWeight: "bold",
   },
   headerCell: { textAlign: "center" },
   row: {
     display: "flex",
-    padding: "16px 20px",
-    borderBottom: "1px solid #0d0d0d",
+    padding: "18px 20px",
+    borderBottom: "1px solid #111",
     alignItems: "center",
-    transition: "all 0.4s ease",
+    transition: "all 0.3s ease",
     animation: "slideIn 0.5s ease forwards",
     opacity: 0,
-    transform: "translateX(-20px)",
+    transform: "translateY(15px)",
   },
   cell: { textAlign: "center", fontSize: "14px" },
   youBadge: {

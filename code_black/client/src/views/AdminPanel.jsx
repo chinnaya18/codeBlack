@@ -4,6 +4,7 @@ import { socket, registerUser } from "../socket/leaderboard";
 import { getUser } from "../services/auth";
 import { fetchWithAuth } from "../services/api";
 import ProfileDropdown from "../components/ProfileDropdown";
+import { evaluateCodeLocally } from "../services/aiEvaluation";
 
 export default function AdminPanel() {
   const navigate = useNavigate();
@@ -153,7 +154,46 @@ export default function AdminPanel() {
   const evaluateAll = async () => {
     setLoading((prev) => ({ ...prev, evaluate: true }));
     try {
-      const res = await fetchWithAuth("/admin/evaluate-all", { method: "POST" });
+      // 1. Fetch pending submissions from state
+      const subData = await fetchWithAuth("/admin/submissions");
+      const pendingSubs = subData.submissions?.filter(s => s.status === "pending") || [];
+
+      if (pendingSubs.length === 0) {
+        showMessage("No pending submissions to evaluate.");
+        setLoading((prev) => ({ ...prev, evaluate: false }));
+        return;
+      }
+
+      showMessage(`Evaluating ${pendingSubs.length} submissions locally...`);
+
+      // 2. Evaluate locally
+      const results = [];
+      let encounteredError = null;
+
+      for (const sub of pendingSubs) {
+        try {
+          const problem = sub.problem || { description: "Solve the problem." };
+          const scoring = await evaluateCodeLocally(sub.code, sub.language, problem);
+          results.push({
+            submissionKey: sub.submissionKey,
+            scoring
+          });
+        } catch (err) {
+          console.error(`Failed to evaluate ${sub.username}:`, err);
+          encounteredError = err;
+        }
+      }
+
+      if (encounteredError && results.length < pendingSubs.length) {
+        alert(`Warning: Failed to evaluate some submissions due to an AI model error:\n\n${encounteredError.message}\n\nPlease check your AI Config overrides or OpenRouter API settings.`);
+      }
+
+      // 3. Save evaluations to server
+      const res = await fetchWithAuth("/admin/save-evaluations", {
+        method: "POST",
+        body: JSON.stringify({ results })
+      });
+
       showMessage(res.message);
       fetchState();
     } catch (err) {
@@ -282,8 +322,31 @@ export default function AdminPanel() {
               onClick={evaluateAll}
               style={{ ...styles.controlBtn, ...styles.blueBtn }}
             >
-              {loading.evaluate ? "EVALUATING..." : "🧠 EVALUATE ALL PENING SUBMISSIONS"}
+              {loading.evaluate ? "EVALUATING LOCALLY..." : "🧠 EVALUATE PENDING (CLIENT SIDE)"}
             </button>
+          </div>
+          <div style={{ marginTop: "16px", display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ color: "#777", fontSize: "11px" }}>AI Config:</span>
+            <input
+              type="password"
+              placeholder="OpenRouter API Key (.env used if empty)"
+              defaultValue={localStorage.getItem("OPENROUTER_API_KEY") || ""}
+              style={{ padding: "6px", background: "#111", border: "1px solid #333", color: "#ccc", flex: 1, fontFamily: "'JetBrains Mono', monospace", fontSize: "11px", minWidth: "150px" }}
+              onChange={(e) => {
+                if (e.target.value) localStorage.setItem("OPENROUTER_API_KEY", e.target.value);
+                else localStorage.removeItem("OPENROUTER_API_KEY");
+              }}
+            />
+            <input
+              type="text"
+              placeholder="Override Model ID (e.g. google/gemma-2-9b)"
+              defaultValue={localStorage.getItem("OPENROUTER_MODEL") || ""}
+              style={{ padding: "6px", background: "#111", border: "1px solid #333", color: "#00ff99", flex: 1, fontFamily: "'JetBrains Mono', monospace", fontSize: "11px", minWidth: "150px" }}
+              onChange={(e) => {
+                if (e.target.value) localStorage.setItem("OPENROUTER_MODEL", e.target.value);
+                else localStorage.removeItem("OPENROUTER_MODEL");
+              }}
+            />
           </div>
         </div>
 
@@ -314,6 +377,19 @@ export default function AdminPanel() {
                           letterSpacing: "1px",
                         }}>
                           🖥️ {gameState.violations[u].fullscreen} FULLSCREEN
+                        </span>
+                      )}
+                      {gameState.violations[u] && gameState.violations[u].tabSwitch > 0 && (
+                        <span style={{
+                          color: "#00ffff",
+                          fontSize: "9px",
+                          fontWeight: "bold",
+                          border: "1px solid #00ffff40",
+                          padding: "1px 6px",
+                          marginLeft: "6px",
+                          letterSpacing: "1px",
+                        }}>
+                          🔄 {gameState.violations[u].tabSwitch} TAB SWITCH
                         </span>
                       )}
                       {gameState.violations[u] && gameState.violations[u].kicked && (
@@ -362,7 +438,10 @@ export default function AdminPanel() {
                       <span style={styles.lbScores}>
                         R1:{entry.round1} R2:{entry.round2}
                       </span>
-                      <span style={styles.lbTotal}>{entry.total}</span>
+                      <span style={styles.lbTotal}>
+                        {entry.total}
+                        {entry.violationPenalty > 0 && <span style={{ color: "#ff4444", fontSize: "10px", marginLeft: "4px" }}>(-{entry.violationPenalty} pts)</span>}
+                      </span>
                     </div>
                   ))}
                   <button
@@ -388,7 +467,7 @@ export default function AdminPanel() {
                 <div key={idx} style={styles.userRow}>
                   <div style={styles.userInfo}>
                     <span style={{ ...styles.userDot, background: sub.status === "pending" ? "#ff9900" : "#00ff99", boxShadow: sub.status === "pending" ? "0 0 8px #ff9900" : "0 0 8px #00ff99" }} />
-                    <span style={styles.userName}>{sub.username} (R{sub.round})</span>
+                    <span style={styles.userName}>{sub.username} (R{sub.round}{sub.problemIdx !== undefined ? ` Q${sub.problemIdx + 1}` : ""})</span>
                     <span style={{ color: "#888", fontSize: "10px", marginLeft: "10px" }}>Lang: {sub.language} | {sub.status !== "pending" ? `${sub.result?.score || 0} pts` : "PENDING"}</span>
                   </div>
                   <button
@@ -409,7 +488,7 @@ export default function AdminPanel() {
             <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
               <div style={styles.modalHeader}>
                 <h3 style={{ margin: 0, color: "#00ff99", letterSpacing: "2px", fontWeight: "bold" }}>
-                  {viewedCode.username.toUpperCase()}'S CODE (ROUND {viewedCode.round})
+                  {viewedCode.username.toUpperCase()}'S CODE (ROUND {viewedCode.round}{viewedCode.problemIdx !== undefined ? ` Q${viewedCode.problemIdx + 1}` : ""})
                 </h3>
                 <button onClick={() => setViewedCode(null)} style={styles.closeBtn}>✕</button>
               </div>
@@ -423,6 +502,11 @@ export default function AdminPanel() {
                     <div style={{ color: "#888", fontSize: "10px", lineHeight: "1.6" }}>
                       {viewedCode.result?.feedback?.map((f, i) => <div key={i}>{f}</div>)}
                     </div>
+                    {viewedCode.result?.modelUsed && (
+                      <div style={{ color: "#00ccff", fontSize: "10px", marginTop: "12px", borderTop: "1px solid #222", paddingTop: "8px" }}>
+                        🛠 Evaluating Model: {viewedCode.result.modelUsed}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -631,7 +715,14 @@ const styles = {
     gridTemplateColumns: "1fr 1fr",
     gap: "20px",
   },
-  list: { display: "flex", flexDirection: "column", gap: "6px" },
+  list: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    maxHeight: "350px",
+    overflowY: "auto",
+    paddingRight: "6px"
+  },
   userRow: {
     display: "flex",
     justifyContent: "space-between",

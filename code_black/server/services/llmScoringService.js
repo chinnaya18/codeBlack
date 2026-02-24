@@ -67,16 +67,14 @@ SCORING CRITERIA:
             languagePenalty = 10;
         } else if (lang === "java") {
             languagePenalty = 3;
+        } else if (lang === "cpp" || lang === "c++") {
+            languagePenalty = 2;
         } // 'c' has 0 deduction
 
         // Build the feedback list
         let feedback = [result.feedback_line];
         if (languagePenalty > 0) {
-            if (lang === "java") {
-                feedback.push(`Language penalty: -3 pts (Java).`);
-            } else {
-                feedback.push(`Language penalty: -10 pts (${lang}).`);
-            }
+            feedback.push(`Language penalty: -${languagePenalty} pts (${lang}).`);
         } else {
             feedback.push(`No language penalty for C.`);
         }

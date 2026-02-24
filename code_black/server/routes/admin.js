@@ -216,13 +216,50 @@ router.get("/submissions", authMiddleware, adminOnly, (req, res) => {
   // Return an array of all submissions mapped with username
   const subs = Object.entries(gs.submissions).map(([key, data]) => {
     const parts = key.split("_round");
+    const round = parseInt(parts[1], 10);
+    const problemPool = problems[round];
+    const problem = problemPool?.[data.problemIdx ?? 0];
     return {
+      submissionKey: key,
       username: parts[0],
-      round: parseInt(parts[1], 10),
+      round,
+      problem,
       ...data
     };
   });
   res.json({ submissions: subs });
+});
+
+// Endpoint for client-side evaluation fallback
+router.post("/save-evaluations", authMiddleware, adminOnly, (req, res) => {
+  const gs = req.gameState;
+  const { results } = req.body;
+  const getLeaderboard = req.app.get("getLeaderboard");
+
+  if (!results || !Array.isArray(results)) {
+    return res.status(400).json({ message: "Invalid results payload" });
+  }
+
+  results.forEach(result => {
+    const { submissionKey, scoring } = result;
+    const sub = gs.submissions[submissionKey];
+    if (sub && sub.status === "pending" && scoring) {
+      sub.result = scoring;
+      sub.status = "evaluated";
+
+      const username = submissionKey.split("_")[0];
+      const match = submissionKey.match(/_round(\d+)/);
+      const roundNum = match ? match[1] : 1;
+      const roundKey = `round${roundNum}`;
+
+      if (gs.onlineUsers[username]) {
+        gs.onlineUsers[username].points[roundKey] += scoring.score;
+      }
+    }
+  });
+
+  req.io.emit("leaderboard:update", getLeaderboard());
+  res.json({ success: true, message: `Saved ${results.length} evaluations from client.` });
 });
 
 // Evaluate all pending submissions in parallel!

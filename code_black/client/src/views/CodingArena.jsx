@@ -246,10 +246,11 @@ export default function CodingArena() {
                     style={{ ...styles.langSelect, opacity: editorLocked ? 0.5 : 1 }}
                     disabled={editorLocked}
                   >
-                    <option value="python">Python (-5 pts)</option>
-                    <option value="javascript">JavaScript (-5 pts)</option>
+                    <option value="python">Python (-10 pts)</option>
+                    <option value="javascript">JavaScript (-10 pts)</option>
                     <option value="java">Java (-3 pts)</option>
-                    <option value="c">C (no penalty)</option>
+                    <option value="cpp">C++ (-2 pts)</option>
+                    <option value="c">C (No penalty)</option>
                   </select>
                   <span style={styles.langSelectArrow}>▼</span>
                 </div>
