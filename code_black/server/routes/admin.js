@@ -230,6 +230,76 @@ router.get("/submissions", authMiddleware, adminOnly, (req, res) => {
   res.json({ submissions: subs });
 });
 
+// Manual score: admin directly sets score for one submission (no AI)
+router.post("/manual-evaluate", authMiddleware, adminOnly, (req, res) => {
+  const gs = req.gameState;
+  const { submissionKey, score, feedback } = req.body;
+  const getLeaderboard = req.app.get("getLeaderboard");
+
+  const sub = gs.submissions[submissionKey];
+  if (!sub) return res.status(404).json({ message: "Submission not found" });
+  if (sub.status === "evaluated") return res.status(400).json({ message: "Already finalized" });
+
+  const clampedScore = Math.max(0, Math.min(100, Number(score) || 0));
+
+  // If already evaluated before, reverse the old score first
+  if (sub.status === "evaluated" && sub.result?.score) {
+    const parts = submissionKey.split("_round");
+    const username = parts[0];
+    const round = parseInt(parts[1], 10);
+    const roundKey = `round${round}`;
+    if (gs.onlineUsers[username]) {
+      gs.onlineUsers[username].points[roundKey] -= sub.result.score;
+    }
+  }
+
+  sub.result = {
+    aiScore: sub.result?.score || 0, // Preserve AI score
+    manualScore: clampedScore, // Store manual score separately
+    finalScore: clampedScore, // Use manual score as final score
+    errorType: clampedScore === 0 ? "Irrelevant Program" : clampedScore >= 80 ? "Accepted" : "Wrong Answer",
+    feedback: [feedback || `Manually scored by admin: ${clampedScore} pts.`]
+  };
+  sub.status = "evaluated";
+
+  const parts = submissionKey.split("_round");
+  const username = parts[0];
+  const round = parseInt(parts[1], 10);
+  const roundKey = `round${round}`;
+  if (gs.onlineUsers[username]) {
+    gs.onlineUsers[username].points[roundKey] += clampedScore;
+  }
+
+  req.io.emit("leaderboard:update", getLeaderboard());
+  console.log(`[MANUAL] ${username} R${round}: manually scored ${clampedScore}`);
+  res.json({ success: true, message: `Manual score of ${clampedScore} set for ${username}` });
+});
+
+// Run AI evaluation for a single submission
+router.post("/evaluate-one", authMiddleware, adminOnly, async (req, res) => {
+  const gs = req.gameState;
+  const { getLLMScore } = require("../services/llmScoringService");
+  const { submissionKey } = req.body;
+
+  const sub = gs.submissions[submissionKey];
+  if (!sub) return res.status(404).json({ message: "Submission not found" });
+
+  const parts = submissionKey.split("_round");
+  const round = parseInt(parts[1], 10);
+  const problemPool = problems[round];
+  const problem = problemPool?.[sub.problemIdx ?? 0];
+  if (!problem) return res.status(400).json({ message: "Problem not found" });
+
+  try {
+    const scoring = await getLLMScore(sub.code, sub.language, problem);
+    sub.result = scoring;
+    sub.status = "ai_pending";
+    res.json({ success: true, scoring, message: "AI evaluation complete. Review and approve." });
+  } catch (err) {
+    res.status(500).json({ message: "AI evaluation failed: " + err.message });
+  }
+});
+
 // Endpoint for client-side evaluation fallback
 router.post("/save-evaluations", authMiddleware, adminOnly, (req, res) => {
   const gs = req.gameState;
@@ -245,21 +315,39 @@ router.post("/save-evaluations", authMiddleware, adminOnly, (req, res) => {
     const sub = gs.submissions[submissionKey];
     if (sub && sub.status === "pending" && scoring) {
       sub.result = scoring;
-      sub.status = "evaluated";
-
-      const username = submissionKey.split("_")[0];
-      const match = submissionKey.match(/_round(\d+)/);
-      const roundNum = match ? match[1] : 1;
-      const roundKey = `round${roundNum}`;
-
-      if (gs.onlineUsers[username]) {
-        gs.onlineUsers[username].points[roundKey] += scoring.score;
-      }
+      sub.status = "ai_pending"; // Awaiting admin review — points NOT added yet
     }
   });
 
+  res.json({ success: true, message: `${results.length} submissions evaluated. Please review and approve scores.` });
+});
+
+// Admin approves (and optionally overrides) an AI-proposed score
+router.post("/approve-evaluation", authMiddleware, adminOnly, (req, res) => {
+  const gs = req.gameState;
+  const { submissionKey, finalScore } = req.body;
+  const getLeaderboard = req.app.get("getLeaderboard");
+
+  const sub = gs.submissions[submissionKey];
+  if (!sub) return res.status(404).json({ message: "Submission not found" });
+  if (sub.status !== "ai_pending") return res.status(400).json({ message: "Submission is not awaiting admin review" });
+
+  const clampedScore = Math.max(0, Math.min(100, Number(finalScore) ?? sub.result?.score ?? 0));
+  sub.result.score = clampedScore;
+  sub.status = "evaluated";
+
+  const parts = submissionKey.split("_round");
+  const username = parts[0];
+  const round = parseInt(parts[1], 10);
+  const roundKey = `round${round}`;
+
+  if (gs.onlineUsers[username]) {
+    gs.onlineUsers[username].points[roundKey] += clampedScore;
+  }
+
   req.io.emit("leaderboard:update", getLeaderboard());
-  res.json({ success: true, message: `Saved ${results.length} evaluations from client.` });
+  console.log(`[APPROVE] ${username} R${round}: score approved as ${clampedScore}`);
+  res.json({ success: true, message: `Score ${clampedScore} approved for ${username}` });
 });
 
 // Evaluate all pending submissions in parallel!
@@ -294,12 +382,7 @@ router.post("/evaluate-all", authMiddleware, adminOnly, async (req, res) => {
     try {
       const scoring = await getLLMScore(sub.code, sub.language, problem);
       sub.result = scoring;
-      sub.status = "evaluated";
-
-      const roundKey = `round${round}`;
-      if (gs.onlineUsers[username]) {
-        gs.onlineUsers[username].points[roundKey] += scoring.score;
-      }
+      sub.status = "ai_pending"; // Awaiting admin review — points NOT added yet
     } catch (err) {
       console.error(`Error evaluating ${username}:`, err);
       sub.status = "error";
@@ -310,10 +393,7 @@ router.post("/evaluate-all", authMiddleware, adminOnly, async (req, res) => {
     // Run them all in parallel!
     await Promise.all(promises);
 
-    // Broadcast the updated leaderboard with the new scores
-    req.io.emit("leaderboard:update", getLeaderboard());
-
-    res.json({ success: true, count: pendingKeys.length, message: `Evaluated ${pendingKeys.length} submissions in parallel.` });
+    res.json({ success: true, count: pendingKeys.length, message: `${pendingKeys.length} submissions evaluated by AI. Go to Admin Panel to review and approve scores.` });
   } catch (err) {
     res.status(500).json({ message: "Evaluation encountered errors", error: err.message });
   }

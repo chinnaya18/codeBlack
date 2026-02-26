@@ -1,40 +1,31 @@
 /**
- * Problem Pool - Multiple problems per round.
- * Each competitor receives ONE random problem from the selected round.
+ * Problem Pool
+ * Each round contains multiple problems.
+ * One random problem is assigned to each participant.
  */
 
 const problems = {
   1: [
     {
       id: "r1p1",
-      title: "Round 1 - Problem 1: Sum of Array",
+      title: "Sum of Array",
       difficulty: "Easy",
-      tags: ["arrays", "math", "basics"],
       description: `
-You are given an array of N integers.
+Problem Description:
+You are given an array of integers. Your task is to compute and return the sum of all elements in the array.
 
-Your task is to compute and print the sum of all elements in the array.
-
---------------------------------
 Input Format:
---------------------------------
-Line 1: Integer N (number of elements)
-Line 2: N space-separated integers
+- Line 1: An integer N, the number of elements in the array.
+- Line 2: N space-separated integers.
 
---------------------------------
 Output Format:
---------------------------------
-Print a single integer — the sum of the array.
+- A single integer representing the sum of the array.
 
---------------------------------
 Constraints:
---------------------------------
-1 ≤ N ≤ 1000
--10^6 ≤ arr[i] ≤ 10^6
+- 1 ≤ N ≤ 1000
+- -10^6 ≤ arr[i] ≤ 10^6
 
---------------------------------
-Example 1:
---------------------------------
+Example:
 Input:
 3
 1 2 3
@@ -42,106 +33,69 @@ Input:
 Output:
 6
 
---------------------------------
-Example 2:
---------------------------------
-Input:
-5
--1 -2 -3 -4 -5
-
-Output:
--15
-
---------------------------------
-Edge Case Example:
---------------------------------
-Input:
-1
-999999
-
-Output:
-999999
-
---------------------------------
 Explanation:
---------------------------------
-In example 1:
 1 + 2 + 3 = 6
 
-In example 2:
-Sum of negative numbers = -15
+Edge Cases:
+- Array contains a single element
+- All elements are negative
+- Large positive and negative values together
+
+Note:
+No need to type full code or handle input/output.
+You can return only the required function.
+
+Example format:
+int sumArr(int arr[]) {
+  // your code
+}
 `,
-      sampleTestCase: {
-        input: "3\n1 2 3",
-        expected: "6",
-      },
       points: 100,
       timeLimit: 2000,
     },
 
     {
       id: "r1p2",
-      title: "Round 1 - Problem 2: Reverse a String",
+      title: "Reverse a String",
       difficulty: "Easy",
-      tags: ["strings", "two-pointers"],
       description: `
-You are given a string S containing only lowercase English letters.
+Problem Description:
+You are given a string. Your task is to reverse the string and return it.
 
-Your task is to reverse the string and print it.
-
---------------------------------
 Input Format:
---------------------------------
-A single line containing the string S
+- A single line containing the string S.
 
---------------------------------
 Output Format:
---------------------------------
-Print the reversed string.
+- A single line containing the reversed string.
 
---------------------------------
 Constraints:
---------------------------------
-1 ≤ length of S ≤ 1000
-S contains only lowercase letters (a-z)
+- 1 ≤ length of S ≤ 1000
+- S contains only lowercase letters (a-z).
 
---------------------------------
-Example 1:
---------------------------------
+Example:
 Input:
 hello
 
 Output:
 olleh
 
---------------------------------
-Example 2:
---------------------------------
-Input:
-racecar
-
-Output:
-racecar
-
---------------------------------
-Edge Case Example:
---------------------------------
-Input:
-a
-
-Output:
-a
-
---------------------------------
 Explanation:
---------------------------------
-Reversing means the first character becomes last,
-second becomes second last, and so on.
+Reversing the string "hello" gives "olleh".
+
+Edge Cases:
+- Single character string
+- Palindrome string
+- Even and odd length strings
+
+Note:
+No need to type full code or handle input/output.
+You can return only the required function.
+
+Example format:
+string reverseString(string s) {
+  // your code
+}
 `,
-      sampleTestCase: {
-        input: "hello",
-        expected: "olleh",
-      },
       points: 100,
       timeLimit: 2000,
     }
@@ -150,36 +104,26 @@ second becomes second last, and so on.
   2: [
     {
       id: "r2p1",
-      title: "Round 2 - Problem 1: FizzBuzz",
+      title: "FizzBuzz",
       difficulty: "Easy",
-      tags: ["loops", "conditionals"],
       description: `
-Given a number N, print numbers from 1 to N.
+Problem Description:
+Given an integer N, print numbers from 1 to N using the following rules:
+- Print "Fizz" for multiples of 3
+- Print "Buzz" for multiples of 5
+- Print "FizzBuzz" for multiples of both 3 and 5
+- Otherwise, print the number itself
 
-Rules:
-- If number divisible by 3 → print "Fizz"
-- If number divisible by 5 → print "Buzz"
-- If divisible by both 3 and 5 → print "FizzBuzz"
-- Otherwise print the number
-
---------------------------------
 Input Format:
---------------------------------
-Single integer N
+- A single integer N.
 
---------------------------------
 Output Format:
---------------------------------
-Print N lines.
+- N lines following the rules above.
 
---------------------------------
 Constraints:
---------------------------------
-1 ≤ N ≤ 100
+- 1 ≤ N ≤ 100
 
---------------------------------
 Example:
---------------------------------
 Input:
 5
 
@@ -190,33 +134,25 @@ Fizz
 4
 Buzz
 
---------------------------------
-Example 2:
---------------------------------
-Input:
-15
+Explanation:
+Multiples of 3 → Fizz  
+Multiples of 5 → Buzz  
+Multiples of both → FizzBuzz
 
-Output:
-1
-2
-Fizz
-4
-Buzz
-Fizz
-7
-8
-Fizz
-Buzz
-11
-Fizz
-13
-14
-FizzBuzz
+Edge Cases:
+- N = 1
+- N divisible by both 3 and 5
+- Maximum value of N
+
+Note:
+No need to type full code or handle input/output.
+You can return only the required function.
+
+Example format:
+vector<string> fizzBuzz(int N) {
+  // your code
+}
 `,
-      sampleTestCase: {
-        input: "5",
-        expected: "1\n2\nFizz\n4\nBuzz",
-      },
       points: 150,
       timeLimit: 2000,
     }

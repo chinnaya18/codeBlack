@@ -209,4 +209,14 @@ function buildResult(score, errorType, feedback, language, langDeduction, totalC
   };
 }
 
-module.exports = { calculateScore };
+function getFinalScore(submission) {
+  if (submission.result?.manualScore !== undefined) {
+    return submission.result.manualScore;
+  }
+  return submission.result?.aiScore ?? 0;
+}
+
+module.exports = {
+  calculateScore,
+  getFinalScore,
+};
