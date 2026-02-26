@@ -36,7 +36,8 @@ function App() {
     <Router>
       <LogoTopLeft />
       <Routes>
-        <Route path="/" element={<Login />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<Navigate to="/login" replace />} />
         <Route
           path="/waiting"
           element={

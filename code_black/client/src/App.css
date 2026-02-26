@@ -36,3 +36,33 @@
     transform: rotate(360deg);
   }
 }
+
+/* Add styles for better question visibility */
+.question-container {
+  background-color: #111;
+  color: #00ff99;
+  font-size: 18px;
+  padding: 20px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.question-title {
+  font-size: 24px;
+  font-weight: bold;
+  color: #00ff99;
+  margin-bottom: 10px;
+}
+
+.question-description {
+  font-size: 16px;
+  color: #ccc;
+  line-height: 1.6;
+}
+
+.question-edge-cases {
+  font-size: 14px;
+  color: #888;
+  margin-top: 10px;
+}

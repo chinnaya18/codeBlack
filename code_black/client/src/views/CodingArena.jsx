@@ -212,6 +212,25 @@ export default function CodingArena() {
                 <pre style={styles.problemText}>
                   {problem?.description || "Waiting for problem to load..."}
                 </pre>
+                {problem?.functionHint && (
+                  <div style={styles.functionHint}>
+                    <h3>Function Hint:</h3>
+                    <pre>{problem.functionHint}</pre>
+                  </div>
+                )}
+                {problem?.edgeCases && (
+                  <div style={styles.edgeCases}>
+                    <h3>Edge Cases:</h3>
+                    <ul>
+                      {problem.edgeCases.map((edgeCase, index) => (
+                        <li key={index}>
+                          <strong>Input:</strong> {edgeCase.input} <br />
+                          <strong>Output:</strong> {edgeCase.output}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
               <div style={styles.problemFooter}>
                 <button

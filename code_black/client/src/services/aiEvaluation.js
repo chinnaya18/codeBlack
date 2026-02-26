@@ -1,162 +1,147 @@
-// Client-side OpenRouter AI Evaluation Logic with 5 fallback models
+const DEFAULT_OLLAMA_URL = "http://localhost:11434";
+const DEFAULT_OLLAMA_MODEL = "qwen2.5:7b-instruct";
 
-const MODELS = [
-    "openrouter/free",
-    "stepfun/step-3.5-flash:free",
-    "arcee-ai/trinity-large-preview:free",
-    "upstage/solar-pro-3:free",
-];
+const LANG_PENALTY = { python: 10, javascript: 10, js: 10, java: 3, cpp: 2, "c++": 2 };
+const MIN_CODE_LENGTH = 15;
 
-const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-
-export async function evaluateCodeLocally(code, language, problem) {
-    const prompt = `You are a strict AI judge evaluating competitive programming code without running it.
-
-PROBLEM DESCRIPTION:
-${problem?.description || "Solve the coding question."}
-
-STUDENT SUBMITTED CODE (Language: ${language}):
-\`\`\`${language}
-${code}
-\`\`\`
-
-Analyze the code and output exactly a valid JSON object matching this structure EXACTLY (no markdown block, just raw JSON).
-
-SCORING CRITERIA:
-1. has_logic (boolean): true if the code attempts to solve the problem with reasonable logic. false if it is completely empty, gibberish, or fundamentally irrelevant to the problem.
-2. logical_mistakes (boolean): true if their logic is flawed, misses a major edge case, or calculates incorrectly. false if the logic is perfect.
-3. syntax_error_count (number): Count the number of obvious syntax errors (missing semicolons, incorrect indentation in Python, missing brackets, typos in keywords).
-4. other_error_count (number): Count other errors like runtime errors, out of bounds, division by zero, type mismatches.
-5. feedback_line: A single sentence evaluating their code.
-
-{
-  "has_logic": true/false,
-  "logical_mistakes": true/false,
-  "syntax_error_count": <number>,
-  "other_error_count": <number>,
-  "feedback_line": "..."
-}`;
-
-    let lastError = null;
-    const adminModel = localStorage.getItem("OPENROUTER_MODEL");
-    const activeModels = adminModel ? [adminModel, ...MODELS] : MODELS;
-
-    for (const model of activeModels) {
-        try {
-            const apiKey = localStorage.getItem("OPENROUTER_API_KEY") || import.meta.env?.VITE_OPENROUTER_API_KEY || process.env.REACT_APP_OPENROUTER_API_KEY || "";
-
-            const response = await fetch(OPENROUTER_API_URL, {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${apiKey}`,
-                    "HTTP-Referer": window.location.origin,
-                    "X-Title": "CodeBlack Evaluation",
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    model: model,
-                    messages: [{ role: "user", content: prompt }]
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`Model ${model} returned ${response.status}`);
-            }
-
-            const data = await response.json();
-            const content = data?.choices?.[0]?.message?.content;
-
-            if (!content) {
-                throw new Error(`Invalid response format from ${model}`);
-            }
-
-            // Parse JSON
-            let resultText = content.trim();
-            if (resultText.startsWith("\`\`\`json")) resultText = resultText.replace(/\`\`\`json/g, "").replace(/\`\`\`/g, "").trim();
-            else if (resultText.startsWith("\`\`\`")) resultText = resultText.replace(/\`\`\`/g, "").trim();
-
-            const result = JSON.parse(resultText);
-
-            const finalScore = calculateScore(result, language);
-            finalScore.modelUsed = model; // Add model info to the result
-            return finalScore;
-
-        } catch (error) {
-            console.error(`Local AI Evaluation error with model ${model}:`, error);
-            lastError = error;
-            // continue to next model
-        }
-    }
-
-    // If all models fail, we THROW an error.
-    // This explicitly prevents the AdminPanel from saving a "0 score" to the database for this student,
-    // thereby keeping the submission "pending" until the Admin corrects their API Key or Model choice.
-    throw new Error(`Failed to reach OpenRouter AI models: ${lastError?.message || "Unknown error"}. Ensure API Key is correct.`);
-}
-
-function calculateScore(result, language) {
-    let score = 100;
+function applyRules(result, language, rawCode) {
     const lang = language.toLowerCase();
+    const langPenalty = LANG_PENALTY[lang] || 0;
 
-    let languagePenalty = 0;
-    if (lang === "python" || lang === "javascript" || lang === "js") {
-        languagePenalty = 10;
-    } else if (lang === "java") {
-        languagePenalty = 3;
-    } else if (lang === "cpp" || lang === "c++") {
-        languagePenalty = 2;
+    const errorType = (result.error_type || "Accepted").trim();
+    const feedback = [result.feedback || "Evaluated."];
+
+    // Hard rule: gibberish / too short
+    const codeLen = (rawCode || "").trim().length;
+    if (codeLen < MIN_CODE_LENGTH || errorType === "Irrelevant Program") {
+        return {
+            score: 0,
+            errorType: "Irrelevant Program",
+            feedback: ["Code does not attempt to solve the problem."]
+        };
     }
 
-    let feedback = [result.feedback_line || "Analyzed successfully."];
+    // Recalculate score from rubric (trust rubric, not model guess)
+    const r = result.rubric || {};
+    let score =
+        (r.understanding || 0) +
+        (r.logic || 0) +
+        (r.edge_cases || 0) +
+        (r.clarity || 0) +
+        (r.language || 0);
 
-    if (languagePenalty > 0) {
-        feedback.push(`Language penalty: -${languagePenalty} pts (${lang}).`);
-    } else {
-        feedback.push(`No language penalty for C.`);
+    // Hard caps by error type
+    if (errorType === "Syntax Error")  score = Math.min(score, 40);
+    if (errorType === "Runtime Error") score = Math.min(score, 50);
+    if (errorType === "Wrong Answer")  score = Math.min(score, 60);
+
+    // Language penalty
+    score = Math.max(0, score - langPenalty);
+    if (langPenalty > 0) {
+        feedback.push(`Language penalty: -${langPenalty} pts (${lang}).`);
     }
-
-    score -= languagePenalty;
-    let errorType = "Accepted";
-
-    if (result.has_logic === false) {
-        score = 0;
-        errorType = "Irrelevant Program";
-        feedback.push("Logic penalty: Score is 0 because logic is completely absent or irrelevant (-100 pts).");
-    } else {
-        let isFlawed = false;
-
-        if (result.logical_mistakes) {
-            score -= 40;
-            isFlawed = true;
-            feedback.push("Logical mistake penalty: -40 pts.");
-        }
-
-        if (result.syntax_error_count > 0) {
-            const synPenalty = 3 * result.syntax_error_count;
-            score -= synPenalty;
-            isFlawed = true;
-            feedback.push(`Syntax error penalty: -${synPenalty} pts (${result.syntax_error_count} errors).`);
-        }
-
-        if (result.other_error_count > 0) {
-            const othPenalty = 5 * result.other_error_count;
-            score -= othPenalty;
-            isFlawed = true;
-            feedback.push(`Other/Runtime error penalty: -${othPenalty} pts (${result.other_error_count} errors).`);
-        }
-
-        if (isFlawed) {
-            if (result.syntax_error_count > 0) errorType = "Syntax Error";
-            else if (result.other_error_count > 0) errorType = "Runtime Error";
-            else errorType = "Wrong Answer";
-        }
-    }
-
-    if (score < 0) score = 0;
 
     return {
-        score,
-        feedback,
-        errorType
+        score: Math.max(0, Math.min(100, score)),
+        errorType,
+        feedback
     };
+}
+
+export async function evaluateCodeLocally(code, language, problem) {
+    const ollamaUrl = localStorage.getItem("OLLAMA_URL") || DEFAULT_OLLAMA_URL;
+    const ollamaModel = localStorage.getItem("OLLAMA_MODEL") || DEFAULT_OLLAMA_MODEL;
+
+    const prompt = `
+You are a STRICT code judge for a blind coding contest.
+You MUST be conservative. Do NOT guess missing logic.
+
+Problem:
+${(problem?.description || "Solve the problem.").slice(0, 300)}
+
+Submitted Code (${language}):
+${code.slice(0, 800)}
+
+Evaluation Steps (MANDATORY):
+1. Decide whether the code attempts to solve the problem.
+2. Check if the main logic is correct.
+3. Identify missing edge cases or logical flaws.
+4. Choose error_type EXACTLY as one of:
+   Accepted | Wrong Answer | Syntax Error | Runtime Error | Irrelevant Program
+5. Score using the rubric below.
+
+STRICT RUBRIC:
+- understanding (0–20)
+- logic (0–40)
+- edge_cases (0–20)
+- clarity (0–10)
+- language (0–10)
+
+HARD RULES:
+- If code does not attempt the problem → Irrelevant Program (score 0)
+- If logic is incorrect → error_type MUST be Wrong Answer
+- Wrong Answer → max score 60
+- Runtime Error → max score 50
+- Syntax Error → max score 40
+- Do NOT give high scores for partially correct logic
+- Do NOT assume missing code works
+
+Output ONLY valid JSON in this EXACT format:
+{
+  "intent_match": true,
+  "logic_correct": false,
+  "error_type": "Wrong Answer",
+  "rubric": {
+    "understanding": 0,
+    "logic": 0,
+    "edge_cases": 0,
+    "clarity": 0,
+    "language": 0
+  },
+  "feedback": "one short sentence"
+}
+`;
+
+    try {
+        const response = await fetch(`${ollamaUrl}/api/generate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                model: ollamaModel,
+                prompt,
+                stream: false,
+                format: "json",
+                options: {
+                    temperature: 0,
+                    num_predict: 200
+                }
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Ollama returned HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        let content = data?.response;
+        if (!content) throw new Error("No response from Ollama");
+
+        content = content.trim();
+        if (content.startsWith("```")) {
+            content = content.replace(/```[\w]*\n?/g, "").trim();
+        }
+
+        const result = JSON.parse(content);
+
+        return {
+            ...applyRules(result, language, code),
+            modelUsed: ollamaModel
+        };
+
+    } catch (error) {
+        console.error("Ollama AI Evaluation error:", error);
+        throw new Error(
+            `AI evaluation failed: ${error.message}. Make sure Ollama is running (ollama serve).`
+        );
+    }
 }

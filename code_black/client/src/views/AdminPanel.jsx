@@ -23,6 +23,9 @@ export default function AdminPanel() {
   const [message, setMessage] = useState("");
   const [submissions, setSubmissions] = useState([]);
   const [viewedCode, setViewedCode] = useState(null);
+  const [overrideScore, setOverrideScore] = useState("");
+  const [manualFeedback, setManualFeedback] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
 
   useEffect(() => {
     if (user.role !== "admin") {
@@ -73,6 +76,10 @@ export default function AdminPanel() {
       const subData = await fetchWithAuth("/admin/submissions");
       if (subData.submissions) setSubmissions(subData.submissions);
     } catch (err) {
+      if (err.message.includes("Unauthorized")) {
+        console.error("Session expired. Redirecting to login.");
+        return;
+      }
       console.error("Failed to fetch state:", err);
     }
   };
@@ -92,6 +99,10 @@ export default function AdminPanel() {
       showMessage(`Round ${round} started successfully!`);
       fetchState();
     } catch (err) {
+      if (err.message.includes("Unauthorized")) {
+        console.error("Session expired. Redirecting to login.");
+        return;
+      }
       showMessage(`Error: ${err.message}`);
     } finally {
       setLoading((prev) => ({ ...prev, [`start${round}`]: false }));
@@ -185,7 +196,7 @@ export default function AdminPanel() {
       }
 
       if (encounteredError && results.length < pendingSubs.length) {
-        alert(`Warning: Failed to evaluate some submissions due to an AI model error:\n\n${encounteredError.message}\n\nPlease check your AI Config overrides or OpenRouter API settings.`);
+        alert(`Warning: Failed to evaluate some submissions:\n\n${encounteredError.message}\n\nMake sure Ollama is running: ollama serve && ollama run qwen2.5:7b-instruct`);
       }
 
       // 3. Save evaluations to server
@@ -200,6 +211,65 @@ export default function AdminPanel() {
       showMessage(`Error: ${err.message}`);
     } finally {
       setLoading((prev) => ({ ...prev, evaluate: false }));
+    }
+  };
+
+  const approveEvaluation = async (submissionKey, finalScore) => {
+    setLoading((prev) => ({ ...prev, [`approve_${submissionKey}`]: true }));
+    try {
+      const res = await fetchWithAuth("/admin/approve-evaluation", {
+        method: "POST",
+        body: JSON.stringify({ submissionKey, finalScore }),
+      });
+      showMessage(res.message);
+      setViewedCode(null);
+      fetchState();
+    } catch (err) {
+      showMessage(`Error: ${err.message}`);
+    } finally {
+      setLoading((prev) => ({ ...prev, [`approve_${submissionKey}`]: false }));
+    }
+  };
+
+  const manualEvaluate = async (submissionKey, score, feedback) => {
+    setLoading((prev) => ({ ...prev, [`manual_${submissionKey}`]: true }));
+    try {
+      const res = await fetchWithAuth("/admin/manual-evaluate", {
+        method: "POST",
+        body: JSON.stringify({ submissionKey, score, feedback }),
+      });
+      showMessage(res.message);
+      setViewedCode(null);
+      setOverrideScore("");
+      setManualFeedback("");
+      fetchState();
+    } catch (err) {
+      showMessage(`Error: ${err.message}`);
+    } finally {
+      setLoading((prev) => ({ ...prev, [`manual_${submissionKey}`]: false }));
+    }
+  };
+
+  const evaluateOne = async (sub) => {
+    const key = sub.submissionKey;
+    setLoading((prev) => ({ ...prev, [`aiOne_${key}`]: true }));
+    try {
+      const res = await fetchWithAuth("/admin/evaluate-one", {
+        method: "POST",
+        body: JSON.stringify({ submissionKey: key }),
+      });
+      showMessage(res.message);
+      // Refresh the modal with new data
+      const subData = await fetchWithAuth("/admin/submissions");
+      if (subData.submissions) {
+        setSubmissions(subData.submissions);
+        const updated = subData.submissions.find(s => s.submissionKey === key);
+        if (updated) setViewedCode(updated);
+      }
+    } catch (err) {
+      showMessage(`Error: ${err.message}`);
+    } finally {
+      setLoading((prev) => ({ ...prev, [`aiOne_${key}`]: false }));
     }
   };
 
@@ -322,31 +392,34 @@ export default function AdminPanel() {
               onClick={evaluateAll}
               style={{ ...styles.controlBtn, ...styles.blueBtn }}
             >
-              {loading.evaluate ? "EVALUATING LOCALLY..." : "🧠 EVALUATE PENDING (CLIENT SIDE)"}
+              {loading.evaluate ? "EVALUATING (AI)..." : "🤖 AI EVALUATE ALL PENDING"}
             </button>
           </div>
-          <div style={{ marginTop: "16px", display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-            <span style={{ color: "#777", fontSize: "11px" }}>AI Config:</span>
-            <input
-              type="password"
-              placeholder="OpenRouter API Key (.env used if empty)"
-              defaultValue={localStorage.getItem("OPENROUTER_API_KEY") || ""}
-              style={{ padding: "6px", background: "#111", border: "1px solid #333", color: "#ccc", flex: 1, fontFamily: "'JetBrains Mono', monospace", fontSize: "11px", minWidth: "150px" }}
-              onChange={(e) => {
-                if (e.target.value) localStorage.setItem("OPENROUTER_API_KEY", e.target.value);
-                else localStorage.removeItem("OPENROUTER_API_KEY");
-              }}
-            />
-            <input
-              type="text"
-              placeholder="Override Model ID (e.g. google/gemma-2-9b)"
-              defaultValue={localStorage.getItem("OPENROUTER_MODEL") || ""}
-              style={{ padding: "6px", background: "#111", border: "1px solid #333", color: "#00ff99", flex: 1, fontFamily: "'JetBrains Mono', monospace", fontSize: "11px", minWidth: "150px" }}
-              onChange={(e) => {
-                if (e.target.value) localStorage.setItem("OPENROUTER_MODEL", e.target.value);
-                else localStorage.removeItem("OPENROUTER_MODEL");
-              }}
-            />
+          {/* Ollama Config */}
+          <div style={{ marginTop: "12px", background: "#0d0d0d", border: "1px solid #1a1a1a", padding: "12px 16px" }}>
+            <div style={{ color: "#444", fontSize: "9px", letterSpacing: "2px", marginBottom: "10px" }}>🦙 OLLAMA CONFIG</div>
+            <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+              <input
+                type="text"
+                placeholder="URL (default: http://localhost:11434)"
+                defaultValue={localStorage.getItem("OLLAMA_URL") || ""}
+                style={{ padding: "6px 10px", background: "#111", border: "1px solid #2a2a2a", color: "#aaa", flex: 1, fontFamily: "'JetBrains Mono', monospace", fontSize: "11px", minWidth: "150px" }}
+                onChange={(e) => {
+                  if (e.target.value) localStorage.setItem("OLLAMA_URL", e.target.value);
+                  else localStorage.removeItem("OLLAMA_URL");
+                }}
+              />
+              <input
+                type="text"
+                placeholder="Model (default: qwen2.5:7b-instruct)"
+                defaultValue={localStorage.getItem("OLLAMA_MODEL") || ""}
+                style={{ padding: "6px 10px", background: "#111", border: "1px solid #2a2a2a", color: "#00ff99", flex: 1, fontFamily: "'JetBrains Mono', monospace", fontSize: "11px", minWidth: "150px" }}
+                onChange={(e) => {
+                  if (e.target.value) localStorage.setItem("OLLAMA_MODEL", e.target.value);
+                  else localStorage.removeItem("OLLAMA_MODEL");
+                }}
+              />
+            </div>
           </div>
         </div>
 
@@ -458,26 +531,57 @@ export default function AdminPanel() {
 
         {/* ─── Submissions Panel ─── */}
         <div style={styles.section}>
-          <h3 style={styles.sectionTitle}>SUBMISSIONS ({submissions.length})</h3>
+          {/* Header + filter tabs */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
+            <h3 style={{ ...styles.sectionTitle, margin: 0 }}>SUBMISSIONS ({submissions.length})</h3>
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+              {[
+                { key: "all",       label: "ALL",      color: "#555" },
+                { key: "pending",   label: "🟠 PENDING",  color: "#ff9900" },
+                { key: "ai_pending",label: "🟡 REVIEW",   color: "#ffcc00" },
+                { key: "evaluated", label: "🟢 DONE",     color: "#00ff99" },
+              ].map(({ key, label, color }) => {
+                const count = key === "all" ? submissions.length : submissions.filter(s => s.status === key).length;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setFilterStatus(key)}
+                    style={{ padding: "4px 12px", background: filterStatus === key ? color + "22" : "transparent", border: `1px solid ${filterStatus === key ? color : "#2a2a2a"}`, color: filterStatus === key ? color : "#444", fontFamily: "'JetBrains Mono', monospace", fontSize: "9px", letterSpacing: "1px", cursor: "pointer", fontWeight: "bold" }}
+                  >
+                    {label} ({count})
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <div style={styles.list}>
-            {submissions.length === 0 ? (
+            {submissions.filter(s => filterStatus === "all" || s.status === filterStatus).length === 0 ? (
               <p style={styles.emptyText}>No submissions</p>
             ) : (
-              submissions.map((sub, idx) => (
-                <div key={idx} style={styles.userRow}>
-                  <div style={styles.userInfo}>
-                    <span style={{ ...styles.userDot, background: sub.status === "pending" ? "#ff9900" : "#00ff99", boxShadow: sub.status === "pending" ? "0 0 8px #ff9900" : "0 0 8px #00ff99" }} />
-                    <span style={styles.userName}>{sub.username} (R{sub.round}{sub.problemIdx !== undefined ? ` Q${sub.problemIdx + 1}` : ""})</span>
-                    <span style={{ color: "#888", fontSize: "10px", marginLeft: "10px" }}>Lang: {sub.language} | {sub.status !== "pending" ? `${sub.result?.score || 0} pts` : "PENDING"}</span>
+              submissions.filter(s => filterStatus === "all" || s.status === filterStatus).map((sub, idx) => {
+                const dotColor = sub.status === "pending" ? "#ff9900" : sub.status === "ai_pending" ? "#ffcc00" : "#00ff99";
+                return (
+                  <div key={idx} style={{ ...styles.userRow, borderLeft: `3px solid ${dotColor}30` }}>
+                    <div style={styles.userInfo}>
+                      <span style={{ ...styles.userDot, background: dotColor, boxShadow: `0 0 8px ${dotColor}` }} />
+                      <div>
+                        <span style={styles.userName}>{sub.username}</span>
+                        <span style={{ color: "#555", fontSize: "10px", marginLeft: "8px" }}>R{sub.round}{sub.problemIdx !== undefined ? ` Q${sub.problemIdx + 1}` : ""} · {sub.language?.toUpperCase()}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "10px", color: dotColor, fontWeight: "bold", letterSpacing: "1px", minWidth: "90px", textAlign: "right" }}>
+                        {sub.status === "pending" ? "PENDING" :
+                         sub.status === "ai_pending" ? `⏳ ${sub.result?.score ?? 0} pts` :
+                         `✓ ${sub.result?.score ?? 0} pts`}
+                      </span>
+                      <button onClick={() => { setViewedCode(sub); setOverrideScore(""); setManualFeedback(""); }} style={styles.revokeBtn}>
+                        VIEW
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => setViewedCode(sub)}
-                    style={styles.revokeBtn}
-                  >
-                    VIEW CODE
-                  </button>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
@@ -494,21 +598,103 @@ export default function AdminPanel() {
               </div>
 
               <div style={{ padding: "20px", background: "#050505", borderBottom: "1px solid #222" }}>
-                {viewedCode.status === "pending" ? (
-                  <div style={{ color: "#ff9900", fontSize: "12px", letterSpacing: "1px", fontWeight: "bold" }}>⚠️ PENDING AI EVALUATION (NO SCORE YET)</div>
-                ) : (
-                  <div>
-                    <div style={{ color: "#00ff99", fontSize: "16px", fontWeight: "bold", marginBottom: "8px" }}>SCORE: {viewedCode.result?.score || 0} / 100 PTS</div>
-                    <div style={{ color: "#888", fontSize: "10px", lineHeight: "1.6" }}>
-                      {viewedCode.result?.feedback?.map((f, i) => <div key={i}>{f}</div>)}
-                    </div>
-                    {viewedCode.result?.modelUsed && (
-                      <div style={{ color: "#00ccff", fontSize: "10px", marginTop: "12px", borderTop: "1px solid #222", paddingTop: "8px" }}>
-                        🛠 Evaluating Model: {viewedCode.result.modelUsed}
-                      </div>
-                    )}
+                {/* Status badge */}
+                <div style={{ marginBottom: "14px", display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ fontSize: "10px", letterSpacing: "2px", padding: "5px 12px", border: `1px solid ${ viewedCode.status === "evaluated" ? "#00ff9940" : viewedCode.status === "ai_pending" ? "#ffcc0040" : "#ff990040"}`, color: viewedCode.status === "evaluated" ? "#00ff99" : viewedCode.status === "ai_pending" ? "#ffcc00" : "#ff9900", fontWeight: "bold" }}>
+                    {viewedCode.status === "evaluated" ? "✓ FINALIZED" : viewedCode.status === "ai_pending" ? "🤖 AI REVIEW PENDING" : "⏳ AWAITING EVALUATION"}
+                  </span>
+                  <span style={{ color: "#666", fontSize: "12px" }}>{viewedCode.language?.toUpperCase()} · R{viewedCode.round}{viewedCode.problemIdx !== undefined ? ` Q${viewedCode.problemIdx + 1}` : ""}</span>
+                </div>
+
+                {/* AI feedback (shown for ai_pending and evaluated) */}
+                {(viewedCode.status === "ai_pending" || viewedCode.status === "evaluated") && viewedCode.result?.feedback?.length > 0 && (
+                  <div style={{ marginBottom: "14px", padding: "12px 16px", background: "#1a1a1a", border: "1px solid #333" }}>
+                    {viewedCode.result.feedback.map((f, i) => <div key={i} style={{ color: "#aaa", fontSize: "12px", lineHeight: "1.8" }}>{f}</div>)}
+                    {viewedCode.result?.manualScore && <div style={{ color: "#aaa", fontSize: "11px", marginTop: "6px" }}>✏️ Manually scored</div>}
+                    {viewedCode.result?.modelUsed && <div style={{ color: "#00ccff", fontSize: "11px", marginTop: "6px" }}>🦙 {viewedCode.result.modelUsed}</div>}
                   </div>
                 )}
+
+                {/* Finalized score display */}
+                {viewedCode.status === "evaluated" && (
+                  <div style={{ marginBottom: "16px" }}>
+                    <div style={{ color: "#00ccff", fontSize: "14px", fontWeight: "bold" }}>
+                      AI Score: {viewedCode.result?.aiScore ?? "N/A"} / 100
+                    </div>
+                    <div style={{ color: "#ffcc00", fontSize: "14px", fontWeight: "bold" }}>
+                      Manual Score: {viewedCode.result?.manualScore ?? "N/A"} / 100
+                    </div>
+                    <div style={{ color: "#00ff99", fontSize: "22px", fontWeight: "bold", marginTop: "10px", letterSpacing: "1px" }}>
+                      Final Score: {viewedCode.result?.finalScore ?? 0} <span style={{ color: "#333", fontSize: "13px" }}>/ 100 PTS</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* AI eval button for pending */}
+                {(viewedCode.status === "pending") && (
+                  <div style={{ marginBottom: "16px" }}>
+                    <button
+                      onClick={() => evaluateOne(viewedCode)}
+                      disabled={loading[`aiOne_${viewedCode.submissionKey}`]}
+                      style={{ padding: "9px 20px", background: "linear-gradient(135deg, #00d2ff22, #3a7bd522)", border: "1px solid #00d2ff50", color: "#00d2ff", fontFamily: "'JetBrains Mono', monospace", fontSize: "10px", letterSpacing: "2px", fontWeight: "bold", cursor: "pointer", width: "100%", marginBottom: "8px" }}
+                    >
+                      {loading[`aiOne_${viewedCode.submissionKey}`] ? "⏳ RUNNING AI..." : "🤖 RUN AI EVALUATION"}
+                    </button>
+                  </div>
+                )}
+
+                {/* AI proposed score review (ai_pending) */}
+                {viewedCode.status === "ai_pending" && (
+                  <div style={{ marginBottom: "16px", padding: "12px 14px", background: "#0d0d0d", border: "1px solid #ffcc0030" }}>
+                    <div style={{ color: "#ffcc00", fontSize: "10px", letterSpacing: "1px", marginBottom: "10px", fontWeight: "bold" }}>AI PROPOSED: {viewedCode.result?.score ?? 0} pts — Accept or modify below</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <input
+                        type="number" min="0" max="100"
+                        placeholder={viewedCode.result?.score ?? 0}
+                        value={overrideScore}
+                        onChange={(e) => setOverrideScore(e.target.value)}
+                        style={{ width: "70px", padding: "7px", background: "#111", border: "1px solid #ffcc0060", color: "#ffcc00", fontFamily: "'JetBrains Mono', monospace", fontSize: "18px", fontWeight: "bold", textAlign: "center" }}
+                      />
+                      <span style={{ color: "#333" }}>/ 100</span>
+                      <button
+                        onClick={() => approveEvaluation(viewedCode.submissionKey, overrideScore !== "" ? Number(overrideScore) : (viewedCode.result?.score ?? 0))}
+                        disabled={loading[`approve_${viewedCode.submissionKey}`]}
+                        style={{ flex: 1, padding: "8px 16px", background: "linear-gradient(135deg, #00ff99, #00cc77)", border: "none", color: "#000", fontFamily: "'JetBrains Mono', monospace", fontSize: "11px", letterSpacing: "2px", fontWeight: "bold", cursor: "pointer" }}
+                      >
+                        {loading[`approve_${viewedCode.submissionKey}`] ? "SAVING..." : "✓ APPROVE & FINALIZE"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Manual score section — available for pending and ai_pending and re-override evaluated */}
+                <div style={{ padding: "12px 14px", background: "#080808", border: "1px solid #1a1a1a" }}>
+                  <div style={{ color: "#444", fontSize: "9px", letterSpacing: "2px", marginBottom: "10px" }}>✏️ MANUAL SCORE {viewedCode.status === "evaluated" ? "(OVERRIDE)" : ""}</div>
+                  <input
+                    type="text"
+                    placeholder="Feedback note (optional)"
+                    value={manualFeedback}
+                    onChange={(e) => setManualFeedback(e.target.value)}
+                    style={{ width: "100%", marginBottom: "10px", padding: "7px 10px", background: "#111", border: "1px solid #2a2a2a", color: "#ccc", fontFamily: "'JetBrains Mono', monospace", fontSize: "11px", boxSizing: "border-box" }}
+                  />
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <input
+                      type="number" min="0" max="100"
+                      placeholder="0–100"
+                      value={overrideScore}
+                      onChange={(e) => setOverrideScore(e.target.value)}
+                      style={{ width: "70px", padding: "7px", background: "#111", border: "1px solid #2a2a2a", color: "#fff", fontFamily: "'JetBrains Mono', monospace", fontSize: "18px", fontWeight: "bold", textAlign: "center" }}
+                    />
+                    <span style={{ color: "#333" }}>/ 100</span>
+                    <button
+                      onClick={() => manualEvaluate(viewedCode.submissionKey, overrideScore !== "" ? Number(overrideScore) : 0, manualFeedback)}
+                      disabled={overrideScore === "" || loading[`manual_${viewedCode.submissionKey}`]}
+                      style={{ flex: 1, padding: "8px 16px", background: overrideScore !== "" ? "linear-gradient(135deg, #ff9900, #cc7700)" : "#1a1a1a", border: `1px solid ${overrideScore !== "" ? "#ff9900" : "#2a2a2a"}`, color: overrideScore !== "" ? "#000" : "#444", fontFamily: "'JetBrains Mono', monospace", fontSize: "11px", letterSpacing: "2px", fontWeight: "bold", cursor: overrideScore !== "" ? "pointer" : "not-allowed" }}
+                    >
+                      {loading[`manual_${viewedCode.submissionKey}`] ? "SAVING..." : "✏️ SET MANUAL SCORE"}
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div style={{ padding: "20px", flex: 1, overflow: "auto" }}>

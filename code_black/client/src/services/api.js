@@ -19,6 +19,13 @@ export async function fetchWithAuth(url, options = {}) {
     },
   });
 
+  if (res.status === 401) {
+    // Token is invalid or expired
+    localStorage.removeItem("token"); // Clear invalid token
+    window.location.href = "/login"; // Redirect to login page
+    throw new Error("Unauthorized: Please log in again.");
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: "Request failed" }));
     throw new Error(err.message);
