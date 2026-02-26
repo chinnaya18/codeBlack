@@ -238,23 +238,23 @@ router.post("/manual-evaluate", authMiddleware, adminOnly, (req, res) => {
 
   const sub = gs.submissions[submissionKey];
   if (!sub) return res.status(404).json({ message: "Submission not found" });
-  if (sub.status === "evaluated") return res.status(400).json({ message: "Already finalized" });
 
   const clampedScore = Math.max(0, Math.min(100, Number(score) || 0));
 
-  // If already evaluated before, reverse the old score first
-  if (sub.status === "evaluated" && sub.result?.score) {
+  // Reverse the old score if it exists
+  if (sub.result?.finalScore) {
     const parts = submissionKey.split("_round");
     const username = parts[0];
     const round = parseInt(parts[1], 10);
     const roundKey = `round${round}`;
     if (gs.onlineUsers[username]) {
-      gs.onlineUsers[username].points[roundKey] -= sub.result.score;
+      gs.onlineUsers[username].points[roundKey] -= sub.result.finalScore;
     }
   }
 
+  // Update the submission result with the new score
   sub.result = {
-    aiScore: sub.result?.score || 0, // Preserve AI score
+    aiScore: clampedScore, // Update AI score to match manual score
     manualScore: clampedScore, // Store manual score separately
     finalScore: clampedScore, // Use manual score as final score
     errorType: clampedScore === 0 ? "Irrelevant Program" : clampedScore >= 80 ? "Accepted" : "Wrong Answer",
@@ -262,6 +262,7 @@ router.post("/manual-evaluate", authMiddleware, adminOnly, (req, res) => {
   };
   sub.status = "evaluated";
 
+  // Update the leaderboard
   const parts = submissionKey.split("_round");
   const username = parts[0];
   const round = parseInt(parts[1], 10);

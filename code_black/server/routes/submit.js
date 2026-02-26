@@ -108,4 +108,51 @@ router.get("/my-submissions", authMiddleware, (req, res) => {
   res.json({ submissions: mySubs });
 });
 
+// New function to handle auto-submission
+async function autoSubmitOnLeaveOrEnd(username, round, gs, req) {
+  const assignmentIdx = gs.problemAssignments?.[username]?.[round] || 0;
+  const submissionKey = `${username}_round${round}_q${assignmentIdx}`;
+
+  // Check if already submitted
+  if (gs.submissions[submissionKey]) {
+    console.log(`[AUTO-SUBMIT] User ${username} already submitted for round ${round}, question ${assignmentIdx}`);
+    return;
+  }
+
+  // Get the user's assigned problem
+  const problemPool = problems[round];
+  if (!problemPool || !problemPool[assignmentIdx]) {
+    console.error(`[AUTO-SUBMIT] Problem not found for user ${username}, round ${round}, question ${assignmentIdx}`);
+    return;
+  }
+
+  const problem = problemPool[assignmentIdx];
+
+  // Auto-submit empty code
+  gs.submissions[submissionKey] = {
+    code: "",
+    language: "",
+    problemId: problem.id,
+    problemIdx: assignmentIdx,
+    timestamp: Date.now(),
+    status: "auto-submitted"
+  };
+
+  console.log(`[AUTO-SUBMIT] Empty submission recorded for user ${username}, round ${round}, question ${assignmentIdx}`);
+
+  // Notify user if they are online
+  const userData = gs.onlineUsers[username];
+  if (userData && userData.socketId) {
+    req.io.to(userData.socketId).emit("submission:auto-submitted", {
+      round,
+      problemId: problem.id,
+      message: "Your code was auto-submitted as the round ended or you left."
+    });
+  }
+}
+
+// Export the router as the default export
 module.exports = router;
+
+// Export autoSubmitOnLeaveOrEnd as a named export
+module.exports.autoSubmitOnLeaveOrEnd = autoSubmitOnLeaveOrEnd;

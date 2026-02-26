@@ -197,7 +197,7 @@ export default function Leaderboard() {
                   {sub.status === "pending" ? "⏳ AWAITING EVALUATION" : "✅ EVALUATED"}
                 </span>
                 <span style={{ ...styles.cell, width: "120px", color: "#00ff99", fontWeight: "bold" }}>
-                  {sub.status !== "pending" ? `${sub.result?.score || 0} PTS` : "—"}
+                  {sub.status !== "pending" ? `${sub.result?.finalScore || 0} PTS` : "—"}
                 </span>
                 <span style={{ ...styles.cell, width: "120px" }}>
                   <button onClick={() => setViewedCode(sub)} style={styles.viewBtn}>VIEW DETAILS</button>
@@ -219,17 +219,11 @@ export default function Leaderboard() {
               <button onClick={() => setViewedCode(null)} style={styles.closeBtn}>✕</button>
             </div>
 
-            <div style={{ padding: "20px", background: "#050505", border: "1px solid #222" }}>
-              {viewedCode.status === "pending" ? (
-                <div style={{ color: "#ff9900", fontSize: "12px", letterSpacing: "1px", fontWeight: "bold" }}>⚠️ PENDING AI EVALUATION. CHECK BACK ONCE THE ADMIN HAS EVALUATED.</div>
-              ) : (
-                <div>
-                  <div style={{ color: "#00ff99", fontSize: "16px", fontWeight: "bold", marginBottom: "8px" }}>SCORE: {viewedCode.result?.score || 0} / 100 PTS</div>
-                  <div style={{ color: "#888", fontSize: "12px", lineHeight: "1.6" }}>
-                    {viewedCode.result?.feedback?.map((f, i) => <div key={i}>• {f}</div>)}
-                  </div>
-                </div>
-              )}
+            <div style={{ padding: "20px", background: "#050505", borderBottom: "1px solid #222" }}>
+              <h3 style={{ color: "#00ff99", fontSize: "14px", marginBottom: "10px" }}>SCORE: {viewedCode.result?.finalScore || 0} / 100 PTS</h3>
+              <pre style={{ color: "#ccc", fontSize: "12px", lineHeight: "1.6" }}>
+                {viewedCode.code || "No code submitted."}
+              </pre>
             </div>
 
             <div style={{ padding: "20px", flex: 1, overflow: "auto" }}>

@@ -572,8 +572,8 @@ export default function AdminPanel() {
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <span style={{ fontSize: "10px", color: dotColor, fontWeight: "bold", letterSpacing: "1px", minWidth: "90px", textAlign: "right" }}>
                         {sub.status === "pending" ? "PENDING" :
-                         sub.status === "ai_pending" ? `⏳ ${sub.result?.score ?? 0} pts` :
-                         `✓ ${sub.result?.score ?? 0} pts`}
+                         sub.status === "ai_pending" ? `⏳ ${sub.result?.finalScore ?? 0} pts` :
+                         `✓ ${sub.result?.finalScore ?? 0} pts`}
                       </span>
                       <button onClick={() => { setViewedCode(sub); setOverrideScore(""); setManualFeedback(""); }} style={styles.revokeBtn}>
                         VIEW
